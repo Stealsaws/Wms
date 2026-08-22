@@ -122,5 +122,8 @@ function friendlyError(err) {
   if (msg.startsWith("PRODUCT_NOT_FOUND")) return "ไม่พบสินค้านี้ในระบบ";
   if (msg.includes("EMPTY_CART")) return "ยังไม่ได้เลือกสินค้าในตะกร้า";
   if (msg.includes("INVALID_TEAM")) return "ทีมไม่ถูกต้อง";
+  if (msg.includes("ALREADY_CANCELLED")) return "ออเดอร์นี้ถูกยกเลิกไปแล้ว";
+  if (msg.includes("ORDER_CANCELLED")) return "ออเดอร์นี้ถูกยกเลิกไปแล้ว แก้ไขสถานะไม่ได้";
+  if (msg.includes("ORDER_NOT_FOUND")) return "ไม่พบออเดอร์นี้";
   return msg;
 }
