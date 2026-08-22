@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เข้าสู่ระบบ · คลังสินค้ากลาง</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="mark-lg">WMS</div>
+      <h1>คลังสินค้ากลาง</h1>
+      <p class="sub">เลือกทีมของคุณแล้วกรอกรหัสผ่านเพื่อเข้าใช้งาน</p>
+
+      <div id="config-warning" style="display:none" class="config-warning">
+        ⚠️ ยังไม่ได้ตั้งค่า Supabase — แก้ไขไฟล์ <code>assets/config.js</code> ให้ใส่ URL และ anon key ของโปรเจกต์ก่อนใช้งาน
+      </div>
+
+      <div class="role-grid">
+        <button class="role-btn selected" data-team="A">ทีม A</button>
+        <button class="role-btn" data-team="B">ทีม B</button>
+        <button class="role-btn" data-team="C">ทีม C</button>
+        <button class="role-btn" data-team="ADMIN">Admin</button>
+      </div>
+
+      <label for="pw">รหัสผ่าน</label>
+      <input type="password" id="pw" placeholder="กรอกรหัสผ่าน" autocomplete="current-password">
+
+      <button class="btn btn-primary btn-block" id="login-btn" style="margin-top:18px;">เข้าสู่ระบบ</button>
+
+      <div id="msg"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    let selectedTeam = "A";
+    document.querySelectorAll(".role-btn").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll(".role-btn").forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        selectedTeam = btn.dataset.team;
+      };
+    });
+
+    if (!CONFIG_OK) {
+      document.getElementById("config-warning").style.display = "block";
+    }
+
+    // If already logged in, skip straight to the right page.
+    const existing = getSession();
+    if (existing) {
+      location.href = existing.team === "ADMIN" ? "admin.html" : "team.html";
+    }
+
+    const msgEl = document.getElementById("msg");
+    const btn = document.getElementById("login-btn");
+    const pwEl = document.getElementById("pw");
+
+    async function doLogin() {
+      msgEl.innerHTML = "";
+      const password = pwEl.value;
+      if (!password) {
+        msgEl.innerHTML = `<div class="error-msg">กรุณากรอกรหัสผ่าน</div>`;
+        return;
+      }
+      if (!CONFIG_OK) {
+        msgEl.innerHTML = `<div class="error-msg">ระบบยังไม่ได้ตั้งค่า Supabase</div>`;
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "กำลังตรวจสอบ...";
+      try {
+        const { data, error } = await sb().rpc("verify_login", {
+          p_team: selectedTeam,
+          p_password: password,
+        });
+        if (error) throw error;
+        if (!data) {
+          msgEl.innerHTML = `<div class="error-msg">รหัสผ่านไม่ถูกต้อง</div>`;
+          return;
+        }
+        saveSession(selectedTeam, password);
+        location.href = selectedTeam === "ADMIN" ? "admin.html" : "team.html";
+      } catch (e) {
+        msgEl.innerHTML = `<div class="error-msg">เข้าสู่ระบบไม่สำเร็จ: ${escapeHtml(e.message || String(e))}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "เข้าสู่ระบบ";
+      }
+    }
+
+    btn.onclick = doLogin;
+    pwEl.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+  </script>
+</body>
+</html>

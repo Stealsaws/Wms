@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>จัดการสินค้า · คลังสินค้ากลาง</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div id="topbar-slot"></div>
+
+  <div class="page">
+    <div class="page-head">
+      <h1>จัดการสินค้า (Admin)</h1>
+      <p>เพิ่ม แก้ไข ปรับสต็อก และดูสถานะคำสั่งซื้อของทุกทีม</p>
+    </div>
+
+    <div class="section-title">เพิ่มสินค้าใหม่</div>
+    <div class="card card-pad">
+      <div class="field-row">
+        <div>
+          <label>รหัสสินค้า</label>
+          <input type="text" id="new-code" placeholder="เช่น 8859773952090">
+        </div>
+        <div>
+          <label>ชื่อสินค้า</label>
+          <input type="text" id="new-name" placeholder="ชื่อสินค้า">
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <label>ราคา (บาท)</label>
+          <input type="number" id="new-price" min="0" step="0.01" value="0">
+        </div>
+        <div>
+          <label>สต็อกตั้งต้น</label>
+          <input type="number" id="new-stock" min="0" step="1" value="0">
+        </div>
+      </div>
+      <button class="btn btn-primary" id="add-product-btn" style="margin-top:16px;">เพิ่มสินค้า</button>
+      <div id="add-msg"></div>
+    </div>
+
+    <div class="section-title">รายการสินค้าทั้งหมด</div>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="ค้นหาชื่อหรือรหัสสินค้า...">
+      <button class="filter-chip active" data-f="all">ทั้งหมด</button>
+      <button class="filter-chip" data-f="available">พร้อมขาย</button>
+      <button class="filter-chip" data-f="out">หมด</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>รหัส</th><th>ชื่อสินค้า</th><th>ราคา</th><th>ตั้งต้น</th><th>คงเหลือ</th><th>ปรับสต็อก</th><th>จัดการ</th></tr>
+          </thead>
+          <tbody id="product-body"><tr><td colspan="7" class="muted">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-title">คำสั่งซื้อทุกทีม</div>
+    <div class="toolbar">
+      <button class="filter-chip active" data-of="all">ทั้งหมด</button>
+      <button class="filter-chip" data-of="open">กำลังดำเนินการ</button>
+      <button class="filter-chip" data-of="completed">จบการขายแล้ว</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>วันเวลา</th><th>ทีม</th><th>รายการ</th><th>มูลค่า</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody id="orders-body"><tr><td colspan="6" class="muted">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-title">เปลี่ยนรหัสผ่าน</div>
+    <div class="card card-pad">
+      <div class="field-row">
+        <div>
+          <label>ทีม</label>
+          <select id="pw-team">
+            <option value="ADMIN">Admin</option>
+            <option value="A">ทีม A</option>
+            <option value="B">ทีม B</option>
+            <option value="C">ทีม C</option>
+          </select>
+        </div>
+        <div>
+          <label>รหัสผ่านใหม่</label>
+          <input type="password" id="pw-new" placeholder="รหัสผ่านใหม่">
+        </div>
+      </div>
+      <button class="btn btn-ghost" id="change-pw-btn" style="margin-top:16px;">เปลี่ยนรหัสผ่าน</button>
+      <div id="pw-msg"></div>
+    </div>
+  </div>
+
+  <!-- Edit modal -->
+  <div class="modal-backdrop" id="edit-modal" style="display:none;">
+    <div class="modal">
+      <h2>แก้ไขสินค้า</h2>
+      <input type="hidden" id="edit-code">
+      <label>ชื่อสินค้า</label>
+      <input type="text" id="edit-name">
+      <label>ราคา (บาท)</label>
+      <input type="number" id="edit-price" min="0" step="0.01">
+      <div id="edit-msg"></div>
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button class="btn btn-ghost" id="edit-cancel" style="flex:1;">ยกเลิก</button>
+        <button class="btn btn-primary" id="edit-save" style="flex:2;">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const session = requireSession("ADMIN");
+    renderTopbar("admin");
+
+    let products = [];
+    let filter = "all";
+    let orderFilter = "all";
+    let searchTerm = "";
+
+    function stockStatus(p) {
+      if (p.stock_remaining <= 0) return "out";
+      if (p.stock_remaining <= Math.max(3, p.stock_initial * 0.15)) return "low";
+      return "ok";
+    }
+    function statusLabel(s) { return { ok: "พร้อมขาย", low: "ใกล้หมด", out: "หมด" }[s]; }
+
+    async function loadProducts() {
+      const { data, error } = await sb().from("products").select("*").order("name");
+      if (error) { toast(friendlyError(error), true); return; }
+      products = data || [];
+      renderTable();
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("product-body");
+      const term = searchTerm.trim().toLowerCase();
+      const filtered = products.filter(p => {
+        const st = stockStatus(p);
+        if (filter === "available" && st === "out") return false;
+        if (filter === "out" && st !== "out") return false;
+        if (term && !(p.name.toLowerCase().includes(term) || p.code.includes(term))) return false;
+        return true;
+      });
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="muted">ไม่พบสินค้า</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = filtered.map(p => {
+        const st = stockStatus(p);
+        return `<tr>
+          <td class="mono">${escapeHtml(p.code)}</td>
+          <td>${escapeHtml(p.name)}<br><span class="badge ${st}">${statusLabel(st)}</span></td>
+          <td>${money(p.price)}</td>
+          <td>${p.stock_initial}</td>
+          <td class="mono">${p.stock_remaining}</td>
+          <td>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button class="btn btn-ghost btn-sm" data-adj="-1" data-code="${p.code}">-1</button>
+              <button class="btn btn-ghost btn-sm" data-adj="1" data-code="${p.code}">+1</button>
+              <button class="btn btn-ghost btn-sm" data-adjcustom="${p.code}">อื่นๆ</button>
+            </div>
+          </td>
+          <td>
+            <div style="display:flex;gap:4px;">
+              <button class="btn btn-ghost btn-sm" data-edit="${p.code}">แก้ไข</button>
+              <button class="btn btn-danger btn-sm" data-del="${p.code}">ลบ</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join("");
+
+      tbody.querySelectorAll("[data-adj]").forEach(b => {
+        b.onclick = () => adjustStock(b.dataset.code, parseInt(b.dataset.adj, 10));
+      });
+      tbody.querySelectorAll("[data-adjcustom]").forEach(b => {
+        b.onclick = () => {
+          const v = prompt("ระบุจำนวนที่ต้องการปรับ (ใส่ค่าลบเพื่อลด เช่น -5)");
+          if (v === null) return;
+          const delta = parseInt(v, 10);
+          if (isNaN(delta) || delta === 0) return;
+          adjustStock(b.dataset.adjcustom, delta);
+        };
+      });
+      tbody.querySelectorAll("[data-edit]").forEach(b => {
+        b.onclick = () => openEdit(b.dataset.edit);
+      });
+      tbody.querySelectorAll("[data-del]").forEach(b => {
+        b.onclick = () => deleteProduct(b.dataset.del);
+      });
+    }
+
+    async function adjustStock(code, delta) {
+      const { error } = await sb().rpc("admin_adjust_stock", {
+        p_password: session.password, p_code: code, p_delta: delta, p_note: null,
+      });
+      if (error) { toast(friendlyError(error), true); return; }
+      toast(delta > 0 ? `เพิ่มสต็อก +${delta}` : `ลดสต็อก ${delta}`);
+      loadProducts();
+    }
+
+    async function deleteProduct(code) {
+      if (!confirm("ยืนยันลบสินค้านี้ออกจากระบบ?")) return;
+      const { error } = await sb().rpc("admin_delete_product", { p_password: session.password, p_code: code });
+      if (error) { toast(friendlyError(error), true); return; }
+      toast("ลบสินค้าแล้ว");
+      loadProducts();
+    }
+
+    function openEdit(code) {
+      const p = products.find(x => x.code === code);
+      document.getElementById("edit-code").value = p.code;
+      document.getElementById("edit-name").value = p.name;
+      document.getElementById("edit-price").value = p.price;
+      document.getElementById("edit-msg").innerHTML = "";
+      document.getElementById("edit-modal").style.display = "flex";
+    }
+    document.getElementById("edit-cancel").onclick = () => { document.getElementById("edit-modal").style.display = "none"; };
+    document.getElementById("edit-save").onclick = async () => {
+      const code = document.getElementById("edit-code").value;
+      const name = document.getElementById("edit-name").value.trim();
+      const price = parseFloat(document.getElementById("edit-price").value || "0");
+      const msgEl = document.getElementById("edit-msg");
+      if (!name) { msgEl.innerHTML = `<div class="error-msg">กรุณากรอกชื่อสินค้า</div>`; return; }
+      const { error } = await sb().rpc("admin_edit_product", {
+        p_password: session.password, p_code: code, p_name: name, p_price: price,
+      });
+      if (error) { msgEl.innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
+      document.getElementById("edit-modal").style.display = "none";
+      toast("บันทึกแล้ว");
+      loadProducts();
+    };
+
+    document.getElementById("add-product-btn").onclick = async () => {
+      const code = document.getElementById("new-code").value.trim();
+      const name = document.getElementById("new-name").value.trim();
+      const price = parseFloat(document.getElementById("new-price").value || "0");
+      const stock = parseInt(document.getElementById("new-stock").value || "0", 10);
+      const msgEl = document.getElementById("add-msg");
+      msgEl.innerHTML = "";
+      if (!code || !name) { msgEl.innerHTML = `<div class="error-msg">กรุณากรอกรหัสและชื่อสินค้า</div>`; return; }
+      const { error } = await sb().rpc("admin_add_product", {
+        p_password: session.password, p_code: code, p_name: name, p_price: price, p_stock: stock,
+      });
+      if (error) { msgEl.innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
+      msgEl.innerHTML = `<div class="ok-msg">เพิ่มสินค้าเรียบร้อย</div>`;
+      document.getElementById("new-code").value = "";
+      document.getElementById("new-name").value = "";
+      document.getElementById("new-price").value = "0";
+      document.getElementById("new-stock").value = "0";
+      loadProducts();
+    };
+
+    async function loadOrders() {
+      const tbody = document.getElementById("orders-body");
+      let query = sb()
+        .from("orders")
+        .select("id, team, status, created_at, order_items(qty, unit_price, product_name)")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (orderFilter !== "all") query = query.eq("status", orderFilter);
+      const { data: orders, error } = await query;
+      if (error) { tbody.innerHTML = `<tr><td colspan="6" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
+      if (!orders || orders.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="muted">ไม่มีรายการ</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = orders.map(o => {
+        const items = o.order_items || [];
+        const summary = items.map(i => `${escapeHtml(i.product_name)} ×${i.qty}`).join(", ");
+        const total = items.reduce((s, i) => s + i.qty * (i.unit_price || 0), 0);
+        const dt = new Date(o.created_at).toLocaleString("th-TH");
+        const nextStatus = o.status === "open" ? "completed" : "open";
+        const nextLabel = o.status === "open" ? "มาร์กว่าจบการขาย" : "เปิดใหม่";
+        return `<tr>
+          <td>${dt}</td>
+          <td><span class="team-pill" style="background:var(--paper);color:var(--ink);border:1px solid var(--line);">${teamLabel(o.team)}</span></td>
+          <td style="max-width:320px;">${summary}</td>
+          <td>${money(total)}</td>
+          <td><span class="status-pill ${o.status}">${o.status === "completed" ? "จบการขาย" : "กำลังดำเนินการ"}</span></td>
+          <td><button class="btn btn-ghost btn-sm" data-toggle="${o.id}" data-next="${nextStatus}">${nextLabel}</button></td>
+        </tr>`;
+      }).join("");
+
+      tbody.querySelectorAll("[data-toggle]").forEach(b => {
+        b.onclick = async () => {
+          const { error } = await sb().rpc("admin_set_order_status", {
+            p_password: session.password, p_order_id: b.dataset.toggle, p_status: b.dataset.next,
+          });
+          if (error) { toast(friendlyError(error), true); return; }
+          toast("อัปเดตสถานะแล้ว");
+          loadOrders();
+        };
+      });
+    }
+
+    document.getElementById("change-pw-btn").onclick = async () => {
+      const team = document.getElementById("pw-team").value;
+      const newPw = document.getElementById("pw-new").value;
+      const msgEl = document.getElementById("pw-msg");
+      msgEl.innerHTML = "";
+      if (!newPw || newPw.length < 4) { msgEl.innerHTML = `<div class="error-msg">รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร</div>`; return; }
+      const { error } = await sb().rpc("change_password", {
+        p_team: team, p_old_password: session.password, p_new_password: newPw,
+      });
+      if (error) { msgEl.innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
+      if (team === "ADMIN") saveSession("ADMIN", newPw);
+      msgEl.innerHTML = `<div class="ok-msg">เปลี่ยนรหัสผ่านของ ${escapeHtml(teamLabel(team))} เรียบร้อย</div>`;
+      document.getElementById("pw-new").value = "";
+    };
+
+    document.querySelectorAll("[data-f]").forEach(chip => {
+      chip.onclick = () => {
+        chip.parentElement.querySelectorAll("[data-f]").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        filter = chip.dataset.f;
+        renderTable();
+      };
+    });
+    document.querySelectorAll("[data-of]").forEach(chip => {
+      chip.onclick = () => {
+        chip.parentElement.querySelectorAll("[data-of]").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        orderFilter = chip.dataset.of;
+        loadOrders();
+      };
+    });
+    document.getElementById("search").addEventListener("input", (e) => {
+      searchTerm = e.target.value;
+      renderTable();
+    });
+
+    loadProducts();
+    loadOrders();
+  </script>
+</body>
+</html>

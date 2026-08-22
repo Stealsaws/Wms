@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แดชบอร์ด · คลังสินค้ากลาง</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div id="topbar-slot"></div>
+
+  <div class="page">
+    <div class="page-head">
+      <h1>แดชบอร์ดภาพรวม</h1>
+      <p>สรุปยอดขาย สต็อกคงเหลือ และสถานะสินค้าของทุกทีมแบบเรียลไทม์</p>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat"><div class="label">มูลค่าขายรวม (บาท)</div><div class="value" id="s-value">–</div></div>
+      <div class="stat"><div class="label">จำนวนขายรวม (ชิ้น)</div><div class="value" id="s-sold">–</div></div>
+      <div class="stat"><div class="label">คงเหลือรวม (ชิ้น)</div><div class="value" id="s-remaining">–</div></div>
+      <div class="stat"><div class="label">สินค้าหมดสต็อก</div><div class="value warn" id="s-out">–</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:16px;" id="two-col">
+      <div class="card card-pad">
+        <div class="section-title" style="margin-top:0;">ยอดขายตามทีม</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ทีม</th><th>ขายรวม (ชิ้น)</th><th>มูลค่า (บาท)</th></tr></thead>
+            <tbody id="team-body"><tr><td colspan="3" class="muted">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card card-pad">
+        <div class="section-title" style="margin-top:0;">สินค้าขายดี 10 อันดับ (ตามมูลค่า)</div>
+        <ol class="top-list" id="top-list"><li class="muted">กำลังโหลด...</li></ol>
+      </div>
+    </div>
+
+    <div class="section-title">สถานะสินค้ารายชิ้น</div>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="ค้นหาชื่อหรือรหัสสินค้า...">
+      <button class="filter-chip active" data-f="all">ทั้งหมด</button>
+      <button class="filter-chip" data-f="ok">พร้อมขาย</button>
+      <button class="filter-chip" data-f="low">ใกล้หมด</button>
+      <button class="filter-chip" data-f="out">หมด</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>รหัส</th><th>ชื่อสินค้า</th><th>ตั้งต้น</th><th>คงเหลือ</th><th>สถานะ</th></tr></thead>
+          <tbody id="stock-body"><tr><td colspan="5" class="muted">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    @media (max-width:820px){ #two-col{grid-template-columns:1fr !important;} }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    const session = requireSession(null);
+    renderTopbar("dashboard");
+
+    let products = [];
+    let filter = "all";
+    let searchTerm = "";
+
+    function stockStatus(p) {
+      if (p.stock_remaining <= 0) return "out";
+      if (p.stock_remaining <= Math.max(3, p.stock_initial * 0.15)) return "low";
+      return "ok";
+    }
+    function statusLabel(s) { return { ok: "พร้อมขาย", low: "ใกล้หมด", out: "หมด" }[s]; }
+
+    async function loadAll() {
+      const [{ data: prods, error: pErr }, { data: items, error: iErr }] = await Promise.all([
+        sb().from("products").select("*"),
+        sb().from("order_items").select("qty, unit_price, product_code, product_name, orders(team)"),
+      ]);
+      if (pErr) { toast(friendlyError(pErr), true); return; }
+      products = prods || [];
+      renderStockTable();
+
+      const totalRemaining = products.reduce((s, p) => s + p.stock_remaining, 0);
+      const outCount = products.filter(p => p.stock_remaining <= 0).length;
+
+      let totalValue = 0, totalSold = 0;
+      const byTeam = { A: { qty: 0, value: 0 }, B: { qty: 0, value: 0 }, C: { qty: 0, value: 0 } };
+      const byProduct = {};
+
+      (items || []).forEach(it => {
+        const value = it.qty * (it.unit_price || 0);
+        totalValue += value;
+        totalSold += it.qty;
+        const team = it.orders?.team;
+        if (team && byTeam[team]) { byTeam[team].qty += it.qty; byTeam[team].value += value; }
+        const key = it.product_code;
+        if (!byProduct[key]) byProduct[key] = { name: it.product_name, qty: 0, value: 0 };
+        byProduct[key].qty += it.qty;
+        byProduct[key].value += value;
+      });
+
+      document.getElementById("s-value").textContent = money(totalValue);
+      document.getElementById("s-sold").textContent = totalSold.toLocaleString("th-TH");
+      document.getElementById("s-remaining").textContent = totalRemaining.toLocaleString("th-TH");
+      document.getElementById("s-out").textContent = outCount;
+
+      document.getElementById("team-body").innerHTML = ["A", "B", "C"].map(t =>
+        `<tr><td>${teamLabel(t)}</td><td class="mono">${byTeam[t].qty}</td><td class="mono">${money(byTeam[t].value)}</td></tr>`
+      ).join("");
+
+      const top = Object.values(byProduct).sort((a, b) => b.value - a.value).slice(0, 10);
+      document.getElementById("top-list").innerHTML = top.length
+        ? top.map((p, i) => `<li><span><span class="rank">${i + 1}.</span>${escapeHtml(p.name)}</span><span class="mono">${money(p.value)}</span></li>`).join("")
+        : `<li class="muted">ยังไม่มีข้อมูลการขาย</li>`;
+    }
+
+    function renderStockTable() {
+      const tbody = document.getElementById("stock-body");
+      const term = searchTerm.trim().toLowerCase();
+      const filtered = products.filter(p => {
+        const st = stockStatus(p);
+        if (filter !== "all" && st !== filter) return false;
+        if (term && !(p.name.toLowerCase().includes(term) || p.code.includes(term))) return false;
+        return true;
+      }).sort((a, b) => a.stock_remaining - b.stock_remaining);
+      tbody.innerHTML = filtered.length
+        ? filtered.map(p => {
+            const st = stockStatus(p);
+            return `<tr>
+              <td class="mono">${escapeHtml(p.code)}</td>
+              <td>${escapeHtml(p.name)}</td>
+              <td>${p.stock_initial}</td>
+              <td class="mono">${p.stock_remaining}</td>
+              <td><span class="badge ${st}">${statusLabel(st)}</span></td>
+            </tr>`;
+          }).join("")
+        : `<tr><td colspan="5" class="muted">ไม่พบสินค้า</td></tr>`;
+    }
+
+    document.querySelectorAll("[data-f]").forEach(chip => {
+      chip.onclick = () => {
+        document.querySelectorAll("[data-f]").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        filter = chip.dataset.f;
+        renderStockTable();
+      };
+    });
+    document.getElementById("search").addEventListener("input", (e) => {
+      searchTerm = e.target.value;
+      renderStockTable();
+    });
+
+    loadAll();
+  </script>
+</body>
+</html>
