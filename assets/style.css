@@ -483,6 +483,7 @@ tr:last-child td{border-bottom:none;}
 }
 .status-pill.open{background:var(--amber-soft);color:#7a4a12;}
 .status-pill.completed{background:var(--ok-soft);color:#1c5236;}
+.status-pill.cancelled{background:var(--rust-soft);color:#7a2a23;text-decoration:line-through;}
 
 .top-list{list-style:none;margin:0;padding:0;}
 .top-list li{
