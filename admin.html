@@ -64,11 +64,12 @@
       <button class="filter-chip active" data-of="all">ทั้งหมด</button>
       <button class="filter-chip" data-of="open">กำลังดำเนินการ</button>
       <button class="filter-chip" data-of="completed">จบการขายแล้ว</button>
+      <button class="filter-chip" data-of="cancelled">ยกเลิกแล้ว</button>
     </div>
     <div class="card">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>วันเวลา</th><th>ทีม</th><th>รายการ</th><th>มูลค่า</th><th>สถานะ</th><th></th></tr></thead>
+          <thead><tr><th>วันเวลา</th><th>ทีม</th><th>รายการ</th><th>มูลค่า</th><th>สถานะ</th><th colspan="2"></th></tr></thead>
           <tbody id="orders-body"><tr><td colspan="6" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
@@ -277,6 +278,8 @@
         const summary = items.map(i => `${escapeHtml(i.product_name)} ×${i.qty}`).join(", ");
         const total = items.reduce((s, i) => s + i.qty * (i.unit_price || 0), 0);
         const dt = new Date(o.created_at).toLocaleString("th-TH");
+        const statusText = { open: "กำลังดำเนินการ", completed: "จบการขาย", cancelled: "ยกเลิกแล้ว" }[o.status] || o.status;
+        const isCancelled = o.status === "cancelled";
         const nextStatus = o.status === "open" ? "completed" : "open";
         const nextLabel = o.status === "open" ? "มาร์กว่าจบการขาย" : "เปิดใหม่";
         return `<tr>
@@ -284,8 +287,9 @@
           <td><span class="team-pill" style="background:var(--paper);color:var(--ink);border:1px solid var(--line);">${teamLabel(o.team)}</span></td>
           <td style="max-width:320px;">${summary}</td>
           <td>${money(total)}</td>
-          <td><span class="status-pill ${o.status}">${o.status === "completed" ? "จบการขาย" : "กำลังดำเนินการ"}</span></td>
-          <td><button class="btn btn-ghost btn-sm" data-toggle="${o.id}" data-next="${nextStatus}">${nextLabel}</button></td>
+          <td><span class="status-pill ${o.status}">${statusText}</span></td>
+          <td>${isCancelled ? "" : `<button class="btn btn-ghost btn-sm" data-toggle="${o.id}" data-next="${nextStatus}">${nextLabel}</button>`}</td>
+          <td>${isCancelled ? "" : `<button class="btn btn-danger btn-sm" data-cancel="${o.id}">ยกเลิกออเดอร์</button>`}</td>
         </tr>`;
       }).join("");
 
@@ -297,6 +301,18 @@
           if (error) { toast(friendlyError(error), true); return; }
           toast("อัปเดตสถานะแล้ว");
           loadOrders();
+        };
+      });
+      tbody.querySelectorAll("[data-cancel]").forEach(b => {
+        b.onclick = async () => {
+          if (!confirm("ยืนยันยกเลิกออเดอร์นี้? สต็อกสินค้าในบิลนี้จะถูกคืนกลับให้ทั้งหมด (บิลจะยังอยู่ในระบบ แต่เปลี่ยนสถานะเป็น 'ยกเลิกแล้ว')")) return;
+          const { error } = await sb().rpc("admin_cancel_order", {
+            p_password: session.password, p_order_id: b.dataset.cancel,
+          });
+          if (error) { toast(friendlyError(error), true); return; }
+          toast("ยกเลิกออเดอร์และคืนสต็อกแล้ว");
+          loadOrders();
+          loadProducts();
         };
       });
     }
