@@ -108,11 +108,12 @@
         const summary = items.map(i => `${escapeHtml(i.product_name)} ×${i.qty}`).join(", ");
         const total = items.reduce((s, i) => s + i.qty * (i.unit_price || 0), 0);
         const dt = new Date(o.created_at).toLocaleString("th-TH");
+        const statusText = { open: "กำลังดำเนินการ", completed: "จบการขาย", cancelled: "ยกเลิกแล้ว" }[o.status] || o.status;
         return `<tr>
           <td>${dt}</td>
           <td style="max-width:340px;">${summary}</td>
           <td>${money(total)}</td>
-          <td><span class="status-pill ${o.status}">${o.status === "completed" ? "จบการขาย" : "กำลังดำเนินการ"}</span></td>
+          <td><span class="status-pill ${o.status}">${statusText}</span></td>
         </tr>`;
       }).join("");
     }
