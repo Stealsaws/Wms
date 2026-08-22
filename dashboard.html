@@ -82,7 +82,7 @@
     async function loadAll() {
       const [{ data: prods, error: pErr }, { data: items, error: iErr }] = await Promise.all([
         sb().from("products").select("*"),
-        sb().from("order_items").select("qty, unit_price, product_code, product_name, orders(team)"),
+        sb().from("order_items").select("qty, unit_price, product_code, product_name, orders(team, status)"),
       ]);
       if (pErr) { toast(friendlyError(pErr), true); return; }
       products = prods || [];
@@ -96,6 +96,7 @@
       const byProduct = {};
 
       (items || []).forEach(it => {
+        if (it.orders?.status === "cancelled") return; // ไม่นับออเดอร์ที่ยกเลิกแล้วในยอดขาย
         const value = it.qty * (it.unit_price || 0);
         totalValue += value;
         totalSold += it.qty;
