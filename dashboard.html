@@ -18,6 +18,15 @@
       <button class="btn btn-amber" id="download-btn">⬇ ดาวน์โหลดรายงาน (Excel)</button>
     </div>
 
+    <div class="toolbar">
+      <label style="margin:0;font-size:.82rem;font-weight:600;color:var(--ink-soft);">จากวันที่</label>
+      <input type="date" id="date-from" style="max-width:170px;">
+      <label style="margin:0;font-size:.82rem;font-weight:600;color:var(--ink-soft);">ถึงวันที่</label>
+      <input type="date" id="date-to" style="max-width:170px;">
+      <button class="btn btn-ghost btn-sm" id="date-clear-btn">ดูทั้งหมด</button>
+      <span class="muted" id="range-label"></span>
+    </div>
+
     <div class="stat-grid">
       <div class="stat"><div class="label">มูลค่าขายรวม (บาท)</div><div class="value" id="s-value">–</div></div>
       <div class="stat"><div class="label">จำนวนขายรวม (ชิ้น)</div><div class="value" id="s-sold">–</div></div>
@@ -49,6 +58,16 @@
       <div class="card card-pad">
         <div class="section-title" style="margin-top:0;">สินค้าขายดี 10 อันดับ (ตามมูลค่า)</div>
         <ol class="top-list" id="top-list"><li class="muted">กำลังโหลด...</li></ol>
+      </div>
+    </div>
+
+    <div class="section-title">ยอดขายรายวัน</div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>วันที่</th><th>จำนวนขาย (ชิ้น)</th><th>มูลค่า (บาท)</th></tr></thead>
+          <tbody id="daily-body"><tr><td colspan="3" class="muted">กำลังโหลด...</td></tr></tbody>
+        </table>
       </div>
     </div>
 
@@ -86,8 +105,10 @@
     let products = [];
     let filter = "all";
     let searchTerm = "";
+    let allActiveItems = []; // ไม่รวมออเดอร์ที่ยกเลิก, ยังไม่กรองช่วงวันที่
     let latestByTeam = null;
     let latestOrderItems = [];
+    let latestDaily = [];
     let barChart = null, pieChart = null;
 
     const TEAM_COLORS = { A: "#1f4d3f", B: "#c8792b", C: "#4f7a63" };
@@ -108,17 +129,50 @@
       products = prods || [];
       renderStockTable();
 
+      allActiveItems = (items || []).filter(it => it.orders?.status !== "cancelled");
+      applyDateFilter();
+    }
+
+    function parseLocalDate(dateStr) {
+      // dateStr: "YYYY-MM-DD" จาก input[type=date] — ตีความเป็นเวลาท้องถิ่น
+      if (!dateStr) return null;
+      const [y, m, d] = dateStr.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function applyDateFilter() {
+      const fromVal = document.getElementById("date-from").value;
+      const toVal = document.getElementById("date-to").value;
+      const from = parseLocalDate(fromVal);
+      const to = parseLocalDate(toVal);
+      if (to) to.setHours(23, 59, 59, 999);
+
+      const rangeLabel = document.getElementById("range-label");
+      rangeLabel.textContent = (from || to)
+        ? `กำลังดูช่วง: ${fromVal || "เริ่มต้น"} ถึง ${toVal || "ปัจจุบัน"}`
+        : "กำลังดู: ทั้งหมด";
+
+      const filteredItems = allActiveItems.filter(it => {
+        const dt = it.orders?.created_at ? new Date(it.orders.created_at) : null;
+        if (!dt) return false;
+        if (from && dt < from) return false;
+        if (to && dt > to) return false;
+        return true;
+      });
+
+      renderStats(filteredItems);
+    }
+
+    function renderStats(activeItems) {
       const totalRemaining = products.reduce((s, p) => s + p.stock_remaining, 0);
       const outCount = products.filter(p => p.stock_remaining <= 0).length;
 
       let totalValue = 0, totalSold = 0;
       const byTeam = { A: { qty: 0, value: 0 }, B: { qty: 0, value: 0 }, C: { qty: 0, value: 0 } };
       const byProduct = {};
-      const activeItems = [];
+      const byDay = {};
 
-      (items || []).forEach(it => {
-        if (it.orders?.status === "cancelled") return; // ไม่นับออเดอร์ที่ยกเลิกแล้วในยอดขาย
-        activeItems.push(it);
+      activeItems.forEach(it => {
         const value = it.qty * (it.unit_price || 0);
         totalValue += value;
         totalSold += it.qty;
@@ -128,10 +182,20 @@
         if (!byProduct[key]) byProduct[key] = { name: it.product_name, qty: 0, value: 0 };
         byProduct[key].qty += it.qty;
         byProduct[key].value += value;
+
+        const dayKey = (it.orders?.created_at || "").slice(0, 10);
+        if (dayKey) {
+          if (!byDay[dayKey]) byDay[dayKey] = { qty: 0, value: 0 };
+          byDay[dayKey].qty += it.qty;
+          byDay[dayKey].value += value;
+        }
       });
 
       latestByTeam = byTeam;
       latestOrderItems = activeItems;
+      latestDaily = Object.entries(byDay)
+        .map(([date, v]) => ({ date, ...v }))
+        .sort((a, b) => b.date.localeCompare(a.date));
 
       document.getElementById("s-value").textContent = money(totalValue);
       document.getElementById("s-sold").textContent = totalSold.toLocaleString("th-TH");
@@ -147,8 +211,24 @@
         ? top.map((p, i) => `<li><span><span class="rank">${i + 1}.</span>${escapeHtml(p.name)}</span><span class="mono">${money(p.value)}</span></li>`).join("")
         : `<li class="muted">ยังไม่มีข้อมูลการขาย</li>`;
 
+      const dailyBody = document.getElementById("daily-body");
+      dailyBody.innerHTML = latestDaily.length
+        ? latestDaily.map(d => {
+            const dt = new Date(d.date + "T00:00:00").toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
+            return `<tr><td>${dt}</td><td class="mono">${d.qty}</td><td class="mono">${money(d.value)}</td></tr>`;
+          }).join("")
+        : `<tr><td colspan="3" class="muted">ไม่มีข้อมูลการขายในช่วงนี้</td></tr>`;
+
       renderCharts(byTeam);
     }
+
+    document.getElementById("date-from").addEventListener("change", applyDateFilter);
+    document.getElementById("date-to").addEventListener("change", applyDateFilter);
+    document.getElementById("date-clear-btn").onclick = () => {
+      document.getElementById("date-from").value = "";
+      document.getElementById("date-to").value = "";
+      applyDateFilter();
+    };
 
     function renderCharts(byTeam) {
       const labels = ["A", "B", "C"].map(t => teamLabel(t));
@@ -218,11 +298,12 @@
       renderStockTable();
     });
 
-    // ---------- ดาวน์โหลดรายงาน Excel (สรุปรวม + แยกทีม + สต็อกทั้งหมด) ----------
+    // ---------- ดาวน์โหลดรายงาน Excel (สรุปรวม + รายวัน + แยกทีม + สต็อกทั้งหมด) ----------
     document.getElementById("download-btn").onclick = () => {
       if (!latestByTeam) { toast("กำลังโหลดข้อมูล กรุณารอสักครู่แล้วลองใหม่", true); return; }
 
       const wb = XLSX.utils.book_new();
+      const rangeText = document.getElementById("range-label").textContent;
 
       // ชีต 1: สรุปรวม
       const totalValue = ["A", "B", "C"].reduce((s, t) => s + latestByTeam[t].value, 0);
@@ -230,6 +311,7 @@
       const summaryRows = [
         ["แดชบอร์ดรายงานการขายสินค้า"],
         ["สร้างเมื่อ", new Date().toLocaleString("th-TH")],
+        ["ช่วงข้อมูล", rangeText],
         [],
         ["มูลค่าขายรวม (บาท)", totalValue],
         ["จำนวนขายรวม (ชิ้น)", totalQty],
@@ -244,7 +326,14 @@
       ws1["!cols"] = [{ wch: 26 }, { wch: 18 }, { wch: 18 }];
       XLSX.utils.book_append_sheet(wb, ws1, "สรุปรวม");
 
-      // ชีต 2: รายการขายทั้งหมดแยกทีม (ดิบ สำหรับ pivot เพิ่มเองได้)
+      // ชีต 2: ยอดขายรายวัน
+      const dailyRows = [["วันที่", "จำนวนขาย (ชิ้น)", "มูลค่า (บาท)"]];
+      latestDaily.forEach(d => dailyRows.push([d.date, d.qty, d.value]));
+      const ws2 = XLSX.utils.aoa_to_sheet(dailyRows);
+      ws2["!cols"] = [{ wch: 14 }, { wch: 16 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "ยอดขายรายวัน");
+
+      // ชีต 3: รายการขายทั้งหมดแยกทีม (ดิบ สำหรับ pivot เพิ่มเองได้)
       const detailRows = [["ทีม", "วันเวลา", "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ราคาต่อหน่วย", "มูลค่ารวม"]];
       latestOrderItems.forEach(it => {
         const dt = it.orders?.created_at ? new Date(it.orders.created_at).toLocaleString("th-TH") : "";
@@ -253,18 +342,18 @@
           it.qty, it.unit_price || 0, it.qty * (it.unit_price || 0),
         ]);
       });
-      const ws2 = XLSX.utils.aoa_to_sheet(detailRows);
-      ws2["!cols"] = [{ wch: 10 }, { wch: 20 }, { wch: 16 }, { wch: 40 }, { wch: 8 }, { wch: 12 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, ws2, "รายการขายแยกทีม");
+      const ws3 = XLSX.utils.aoa_to_sheet(detailRows);
+      ws3["!cols"] = [{ wch: 10 }, { wch: 20 }, { wch: 16 }, { wch: 40 }, { wch: 8 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, ws3, "รายการขายแยกทีม");
 
-      // ชีต 3: สต็อกสินค้าทั้งหมด
+      // ชีต 4: สต็อกสินค้าทั้งหมด (ไม่ขึ้นกับช่วงวันที่ — คือยอดคงเหลือ ณ ตอนนี้เสมอ)
       const stockRows = [["รหัสสินค้า", "ชื่อสินค้า", "ราคา", "สต็อกตั้งต้น", "คงเหลือ", "สถานะ"]];
       products.forEach(p => {
         stockRows.push([p.code, p.name, p.price, p.stock_initial, p.stock_remaining, statusLabel(stockStatus(p))]);
       });
-      const ws3 = XLSX.utils.aoa_to_sheet(stockRows);
-      ws3["!cols"] = [{ wch: 16 }, { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, ws3, "สต็อกทั้งหมด");
+      const ws4 = XLSX.utils.aoa_to_sheet(stockRows);
+      ws4["!cols"] = [{ wch: 16 }, { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, ws4, "สต็อกทั้งหมด");
 
       const fname = `รายงานคลังสินค้า_${new Date().toISOString().slice(0, 10)}.xlsx`;
       XLSX.writeFile(wb, fname);
