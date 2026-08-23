@@ -59,6 +59,45 @@
       </div>
     </div>
 
+    <div class="section-title">เพิ่มบิลย้อนหลัง (สำหรับยอดขายที่เกิดขึ้นก่อนเว็บพร้อมใช้งาน)</div>
+    <div class="card card-pad">
+      <p class="muted" style="margin-top:0;">ใช้บันทึกบิลที่ขายไปแล้วจริงแต่ยังไม่เคยเข้าระบบ ตั้งวันที่ของบิลเองได้ — ค่าเริ่มต้นจะ <b>ไม่หักสต็อกซ้ำ</b> เพราะสต็อกคงเหลือที่มีอยู่มักหักยอดนี้ไปแล้ว ติ๊กเลือกได้ถ้าต้องการให้หักจริง</p>
+      <div class="field-row">
+        <div>
+          <label>ทีม</label>
+          <select id="bo-team">
+            <option value="A">ทีม A</option>
+            <option value="B">ทีม B</option>
+            <option value="C">ทีม C</option>
+          </select>
+        </div>
+        <div>
+          <label>วันเวลาของบิล</label>
+          <input type="datetime-local" id="bo-date">
+        </div>
+      </div>
+
+      <label>เพิ่มสินค้าเข้าบิล</label>
+      <div class="field-row">
+        <select id="bo-product-select"><option value="">— เลือกสินค้า —</option></select>
+        <div style="display:flex;gap:8px;">
+          <input type="number" id="bo-qty" min="1" value="1" style="max-width:100px;">
+          <button class="btn btn-ghost" id="bo-add-item-btn" style="white-space:nowrap;">+ เพิ่มลงบิล</button>
+        </div>
+      </div>
+
+      <div id="bo-cart-lines" style="margin-top:12px;"></div>
+      <div id="bo-cart-total" class="muted" style="margin-top:6px;"></div>
+
+      <label style="display:flex;align-items:center;gap:8px;margin-top:16px;">
+        <input type="checkbox" id="bo-deduct-stock" style="width:auto;">
+        <span style="font-weight:400;">หักสต็อกคงเหลือด้วย (ติ๊กเฉพาะถ้ายอดนี้ยังไม่เคยถูกหักในระบบ)</span>
+      </label>
+
+      <button class="btn btn-primary" id="bo-submit-btn" style="margin-top:16px;">บันทึกบิลย้อนหลัง</button>
+      <div id="bo-msg"></div>
+    </div>
+
     <div class="section-title">คำสั่งซื้อทุกทีม</div>
     <div class="toolbar">
       <button class="filter-chip active" data-of="all">ทั้งหมด</button>
@@ -138,6 +177,7 @@
       if (error) { toast(friendlyError(error), true); return; }
       products = data || [];
       renderTable();
+      populateBoProductSelect();
     }
 
     function renderTable() {
@@ -352,6 +392,93 @@
       searchTerm = e.target.value;
       renderTable();
     });
+
+    // ---------- เพิ่มบิลย้อนหลัง ----------
+    let boCart = {}; // code -> qty
+
+    function populateBoProductSelect() {
+      const sel = document.getElementById("bo-product-select");
+      const current = sel.value;
+      sel.innerHTML = `<option value="">— เลือกสินค้า —</option>` +
+        products.map(p => `<option value="${p.code}">${escapeHtml(p.name)} (คงเหลือ ${p.stock_remaining})</option>`).join("");
+      sel.value = current;
+    }
+
+    function setBoDefaultDate() {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      document.getElementById("bo-date").value = now.toISOString().slice(0, 16);
+    }
+    setBoDefaultDate();
+
+    function renderBoCart() {
+      const linesEl = document.getElementById("bo-cart-lines");
+      const codes = Object.keys(boCart);
+      let total = 0;
+      linesEl.innerHTML = codes.map(code => {
+        const p = products.find(x => x.code === code);
+        if (!p) return "";
+        const qty = boCart[code];
+        const lineTotal = (p.price || 0) * qty;
+        total += lineTotal;
+        return `<div class="cart-line">
+          <span class="nm">${escapeHtml(p.name)} × ${qty}</span>
+          <span class="mono">${money(lineTotal)}</span>
+          <button class="rm" data-code="${code}">ลบ</button>
+        </div>`;
+      }).join("") || `<p class="muted">ยังไม่มีสินค้าในบิล</p>`;
+      document.getElementById("bo-cart-total").textContent = codes.length ? `รวม: ${money(total)} บาท` : "";
+      linesEl.querySelectorAll(".rm").forEach(btn => {
+        btn.onclick = () => { delete boCart[btn.dataset.code]; renderBoCart(); };
+      });
+    }
+
+    document.getElementById("bo-add-item-btn").onclick = () => {
+      const code = document.getElementById("bo-product-select").value;
+      const qty = parseInt(document.getElementById("bo-qty").value || "0", 10);
+      if (!code) { toast("กรุณาเลือกสินค้า", true); return; }
+      if (!qty || qty <= 0) { toast("กรุณาระบุจำนวนให้ถูกต้อง", true); return; }
+      boCart[code] = (boCart[code] || 0) + qty;
+      renderBoCart();
+      document.getElementById("bo-qty").value = "1";
+    };
+
+    document.getElementById("bo-submit-btn").onclick = async () => {
+      const msgEl = document.getElementById("bo-msg");
+      msgEl.innerHTML = "";
+      const codes = Object.keys(boCart);
+      if (codes.length === 0) { msgEl.innerHTML = `<div class="error-msg">ยังไม่มีสินค้าในบิล</div>`; return; }
+      const team = document.getElementById("bo-team").value;
+      const dateVal = document.getElementById("bo-date").value;
+      const deduct = document.getElementById("bo-deduct-stock").checked;
+      const btn = document.getElementById("bo-submit-btn");
+      btn.disabled = true;
+      btn.textContent = "กำลังบันทึก...";
+      try {
+        const items = codes.map(code => ({ code, qty: boCart[code] }));
+        const { error } = await sb().rpc("admin_add_backdated_order", {
+          p_password: session.password,
+          p_team: team,
+          p_order_date: dateVal ? new Date(dateVal).toISOString() : null,
+          p_items: items,
+          p_deduct_stock: deduct,
+        });
+        if (error) throw error;
+        msgEl.innerHTML = `<div class="ok-msg">บันทึกบิลย้อนหลังของ${escapeHtml(teamLabel(team))}เรียบร้อย</div>`;
+        boCart = {};
+        renderBoCart();
+        setBoDefaultDate();
+        document.getElementById("bo-deduct-stock").checked = false;
+        loadOrders();
+        if (deduct) loadProducts();
+      } catch (e) {
+        msgEl.innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(e))}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "บันทึกบิลย้อนหลัง";
+      }
+    };
+    renderBoCart();
 
     loadProducts();
     loadOrders();
