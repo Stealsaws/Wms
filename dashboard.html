@@ -10,9 +10,12 @@
   <div id="topbar-slot"></div>
 
   <div class="page">
-    <div class="page-head">
-      <h1>แดชบอร์ดภาพรวม</h1>
-      <p>สรุปยอดขาย สต็อกคงเหลือ และสถานะสินค้าของทุกทีมแบบเรียลไทม์</p>
+    <div class="page-head" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+      <div>
+        <h1>แดชบอร์ดภาพรวม</h1>
+        <p>สรุปยอดขาย สต็อกคงเหลือ และสถานะสินค้าของทุกทีมแบบเรียลไทม์</p>
+      </div>
+      <button class="btn btn-amber" id="download-btn">⬇ ดาวน์โหลดรายงาน (Excel)</button>
     </div>
 
     <div class="stat-grid">
@@ -22,9 +25,19 @@
       <div class="stat"><div class="label">สินค้าหมดสต็อก</div><div class="value warn" id="s-out">–</div></div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:16px;" id="two-col">
+    <div class="section-title" style="margin-top:6px;">ยอดขายตามทีม</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="chart-col">
       <div class="card card-pad">
-        <div class="section-title" style="margin-top:0;">ยอดขายตามทีม</div>
+        <div style="height:260px;"><canvas id="team-bar-chart"></canvas></div>
+      </div>
+      <div class="card card-pad">
+        <div style="height:260px;"><canvas id="team-pie-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-top:16px;" id="two-col">
+      <div class="card card-pad">
+        <div class="section-title" style="margin-top:0;">รายละเอียดยอดขายตามทีม</div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>ทีม</th><th>ขายรวม (ชิ้น)</th><th>มูลค่า (บาท)</th></tr></thead>
@@ -58,10 +71,12 @@
   </div>
 
   <style>
-    @media (max-width:820px){ #two-col{grid-template-columns:1fr !important;} }
+    @media (max-width:820px){ #two-col{grid-template-columns:1fr !important;} #chart-col{grid-template-columns:1fr !important;} }
   </style>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -71,6 +86,11 @@
     let products = [];
     let filter = "all";
     let searchTerm = "";
+    let latestByTeam = null;
+    let latestOrderItems = [];
+    let barChart = null, pieChart = null;
+
+    const TEAM_COLORS = { A: "#1f4d3f", B: "#c8792b", C: "#4f7a63" };
 
     function stockStatus(p) {
       if (p.stock_remaining <= 0) return "out";
@@ -82,7 +102,7 @@
     async function loadAll() {
       const [{ data: prods, error: pErr }, { data: items, error: iErr }] = await Promise.all([
         sb().from("products").select("*"),
-        sb().from("order_items").select("qty, unit_price, product_code, product_name, orders(team, status)"),
+        sb().from("order_items").select("qty, unit_price, product_code, product_name, orders(team, status, created_at)"),
       ]);
       if (pErr) { toast(friendlyError(pErr), true); return; }
       products = prods || [];
@@ -94,9 +114,11 @@
       let totalValue = 0, totalSold = 0;
       const byTeam = { A: { qty: 0, value: 0 }, B: { qty: 0, value: 0 }, C: { qty: 0, value: 0 } };
       const byProduct = {};
+      const activeItems = [];
 
       (items || []).forEach(it => {
         if (it.orders?.status === "cancelled") return; // ไม่นับออเดอร์ที่ยกเลิกแล้วในยอดขาย
+        activeItems.push(it);
         const value = it.qty * (it.unit_price || 0);
         totalValue += value;
         totalSold += it.qty;
@@ -107,6 +129,9 @@
         byProduct[key].qty += it.qty;
         byProduct[key].value += value;
       });
+
+      latestByTeam = byTeam;
+      latestOrderItems = activeItems;
 
       document.getElementById("s-value").textContent = money(totalValue);
       document.getElementById("s-sold").textContent = totalSold.toLocaleString("th-TH");
@@ -121,6 +146,40 @@
       document.getElementById("top-list").innerHTML = top.length
         ? top.map((p, i) => `<li><span><span class="rank">${i + 1}.</span>${escapeHtml(p.name)}</span><span class="mono">${money(p.value)}</span></li>`).join("")
         : `<li class="muted">ยังไม่มีข้อมูลการขาย</li>`;
+
+      renderCharts(byTeam);
+    }
+
+    function renderCharts(byTeam) {
+      const labels = ["A", "B", "C"].map(t => teamLabel(t));
+      const values = ["A", "B", "C"].map(t => byTeam[t].value);
+      const colors = ["A", "B", "C"].map(t => TEAM_COLORS[t]);
+
+      if (barChart) barChart.destroy();
+      barChart = new Chart(document.getElementById("team-bar-chart"), {
+        type: "bar",
+        data: { labels, datasets: [{ label: "มูลค่าขาย (บาท)", data: values, backgroundColor: colors, borderRadius: 6 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, title: { display: true, text: "มูลค่าขายตามทีม (บาท)" } },
+          scales: { y: { beginAtZero: true } },
+        },
+      });
+
+      if (pieChart) pieChart.destroy();
+      const hasSales = values.some(v => v > 0);
+      pieChart = new Chart(document.getElementById("team-pie-chart"), {
+        type: "pie",
+        data: { labels, datasets: [{ data: hasSales ? values : [1, 1, 1], backgroundColor: colors }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom" },
+            title: { display: true, text: "สัดส่วนมูลค่าขายตามทีม" },
+            tooltip: { enabled: hasSales },
+          },
+        },
+      });
     }
 
     function renderStockTable() {
@@ -158,6 +217,58 @@
       searchTerm = e.target.value;
       renderStockTable();
     });
+
+    // ---------- ดาวน์โหลดรายงาน Excel (สรุปรวม + แยกทีม + สต็อกทั้งหมด) ----------
+    document.getElementById("download-btn").onclick = () => {
+      if (!latestByTeam) { toast("กำลังโหลดข้อมูล กรุณารอสักครู่แล้วลองใหม่", true); return; }
+
+      const wb = XLSX.utils.book_new();
+
+      // ชีต 1: สรุปรวม
+      const totalValue = ["A", "B", "C"].reduce((s, t) => s + latestByTeam[t].value, 0);
+      const totalQty = ["A", "B", "C"].reduce((s, t) => s + latestByTeam[t].qty, 0);
+      const summaryRows = [
+        ["แดชบอร์ดรายงานการขายสินค้า"],
+        ["สร้างเมื่อ", new Date().toLocaleString("th-TH")],
+        [],
+        ["มูลค่าขายรวม (บาท)", totalValue],
+        ["จำนวนขายรวม (ชิ้น)", totalQty],
+        ["จำนวนสินค้าทั้งหมด (รายการ)", products.length],
+        ["สินค้าหมดสต็อก (รายการ)", products.filter(p => p.stock_remaining <= 0).length],
+        [],
+        ["สรุปยอดขายตามทีม"],
+        ["ทีม", "จำนวนขาย (ชิ้น)", "มูลค่าขาย (บาท)"],
+        ...["A", "B", "C"].map(t => [teamLabel(t), latestByTeam[t].qty, latestByTeam[t].value]),
+      ];
+      const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
+      ws1["!cols"] = [{ wch: 26 }, { wch: 18 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, ws1, "สรุปรวม");
+
+      // ชีต 2: รายการขายทั้งหมดแยกทีม (ดิบ สำหรับ pivot เพิ่มเองได้)
+      const detailRows = [["ทีม", "วันเวลา", "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ราคาต่อหน่วย", "มูลค่ารวม"]];
+      latestOrderItems.forEach(it => {
+        const dt = it.orders?.created_at ? new Date(it.orders.created_at).toLocaleString("th-TH") : "";
+        detailRows.push([
+          teamLabel(it.orders?.team || ""), dt, it.product_code, it.product_name,
+          it.qty, it.unit_price || 0, it.qty * (it.unit_price || 0),
+        ]);
+      });
+      const ws2 = XLSX.utils.aoa_to_sheet(detailRows);
+      ws2["!cols"] = [{ wch: 10 }, { wch: 20 }, { wch: 16 }, { wch: 40 }, { wch: 8 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "รายการขายแยกทีม");
+
+      // ชีต 3: สต็อกสินค้าทั้งหมด
+      const stockRows = [["รหัสสินค้า", "ชื่อสินค้า", "ราคา", "สต็อกตั้งต้น", "คงเหลือ", "สถานะ"]];
+      products.forEach(p => {
+        stockRows.push([p.code, p.name, p.price, p.stock_initial, p.stock_remaining, statusLabel(stockStatus(p))]);
+      });
+      const ws3 = XLSX.utils.aoa_to_sheet(stockRows);
+      ws3["!cols"] = [{ wch: 16 }, { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, ws3, "สต็อกทั้งหมด");
+
+      const fname = `รายงานคลังสินค้า_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fname);
+    };
 
     loadAll();
   </script>
