@@ -323,8 +323,8 @@
       const msgEl = document.getElementById("pw-msg");
       msgEl.innerHTML = "";
       if (!newPw || newPw.length < 4) { msgEl.innerHTML = `<div class="error-msg">รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร</div>`; return; }
-      const { error } = await sb().rpc("change_password", {
-        p_team: team, p_old_password: session.password, p_new_password: newPw,
+      const { error } = await sb().rpc("admin_reset_password", {
+        p_admin_password: session.password, p_team: team, p_new_password: newPw,
       });
       if (error) { msgEl.innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
       if (team === "ADMIN") saveSession("ADMIN", newPw);
