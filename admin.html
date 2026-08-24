@@ -54,8 +54,8 @@
         <table>
           <thead>
             <tr>
-              <th>รหัส</th>
-              <th>ชื่อสินค้า</th>
+              <th class="sortable" data-sort="code">รหัส</th>
+              <th class="sortable" data-sort="name">ชื่อสินค้า</th>
               <th class="sortable" data-sort="price">ราคา</th>
               <th class="sortable" data-sort="central">คลังกลาง</th>
               <th class="sortable" data-sort="A">ทีม A</th>
@@ -304,6 +304,8 @@
         return true;
       });
       filtered = applySort(filtered, productSort, (p, field) => {
+        if (field === "code") return p.code || "";
+        if (field === "name") return p.name || "";
         if (field === "price") return p.price || 0;
         if (field === "central") return p.stock_remaining || 0;
         return (teamStockMap[p.code] || {})[field] || 0; // A / B / C
