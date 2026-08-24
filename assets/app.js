@@ -164,17 +164,19 @@ async function downloadReceiptPdf(order) {
   document.body.appendChild(wrapper);
 
   try {
+    const canvas = await html2canvas(wrapper, { scale: 2, backgroundColor: "#ffffff" });
+    const imgData = canvas.toDataURL("image/png");
     const doc = new jsPDF({ unit: "pt", format: "a4" });
-    await doc.html(wrapper, {
-      x: 20, y: 20, width: 555, windowWidth: 560,
-      callback: (doc) => {
-        doc.save(`ใบเสร็จ_${teamLabel(order.team)}_${shortId}.pdf`);
-        wrapper.remove();
-      },
-    });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    doc.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
+    doc.save(`ใบเสร็จ_${teamLabel(order.team)}_${shortId}.pdf`);
   } catch (e) {
-    wrapper.remove();
     toast("สร้าง PDF ไม่สำเร็จ: " + (e.message || e), true);
+  } finally {
+    wrapper.remove();
   }
 }
 // (see supabase/schema.sql) into friendly Thai messages.
