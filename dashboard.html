@@ -30,8 +30,8 @@
     <div class="stat-grid">
       <div class="stat"><div class="label">มูลค่าขายรวม (บาท)</div><div class="value" id="s-value">–</div></div>
       <div class="stat"><div class="label">จำนวนขายรวม (ชิ้น)</div><div class="value" id="s-sold">–</div></div>
-      <div class="stat"><div class="label">คงเหลือรวม (ชิ้น)</div><div class="value" id="s-remaining">–</div></div>
-      <div class="stat"><div class="label">สินค้าหมดสต็อก</div><div class="value warn" id="s-out">–</div></div>
+      <div class="stat"><div class="label">คลังกลางคงเหลือ (ชิ้น)</div><div class="value" id="s-remaining">–</div></div>
+      <div class="stat"><div class="label">อยู่ที่ทีมรวม (ชิ้น)</div><div class="value" id="s-team-total">–</div></div>
     </div>
 
     <div class="section-title" style="margin-top:6px;">ยอดขายตามทีม</div>
@@ -73,6 +73,12 @@
 
     <div class="section-title">สถานะสินค้ารายชิ้น</div>
     <div class="toolbar">
+      <button class="filter-chip active" data-scope="central">คลังกลาง</button>
+      <button class="filter-chip" data-scope="A">ทีม A</button>
+      <button class="filter-chip" data-scope="B">ทีม B</button>
+      <button class="filter-chip" data-scope="C">ทีม C</button>
+    </div>
+    <div class="toolbar">
       <input type="text" id="search" placeholder="ค้นหาชื่อหรือรหัสสินค้า...">
       <button class="filter-chip active" data-f="all">ทั้งหมด</button>
       <button class="filter-chip" data-f="ok">พร้อมขาย</button>
@@ -82,7 +88,7 @@
     <div class="card">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>รหัส</th><th>ชื่อสินค้า</th><th>ตั้งต้น</th><th>คงเหลือ</th><th>สถานะ</th></tr></thead>
+          <thead id="stock-thead"><tr><th>รหัส</th><th>ชื่อสินค้า</th><th>ตั้งต้น</th><th>คงเหลือ</th><th>สถานะ</th></tr></thead>
           <tbody id="stock-body"><tr><td colspan="5" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
@@ -103,6 +109,8 @@
     renderTopbar("dashboard");
 
     let products = [];
+    let teamStockAll = []; // ทุกทีม ทุกสินค้า
+    let stockScope = "central"; // central | A | B | C
     let filter = "all";
     let searchTerm = "";
     let allActiveItems = []; // ไม่รวมออเดอร์ที่ยกเลิก, ยังไม่กรองช่วงวันที่
@@ -120,13 +128,26 @@
     }
     function statusLabel(s) { return { ok: "พร้อมขาย", low: "ใกล้หมด", out: "หมด" }[s]; }
 
+    function currentScopeRows() {
+      if (stockScope === "central") {
+        return products.map(p => ({ code: p.code, name: p.name, stock_initial: p.stock_initial, stock_remaining: p.stock_remaining }));
+      }
+      const nameByCode = {};
+      products.forEach(p => { nameByCode[p.code] = p.name; });
+      return teamStockAll
+        .filter(r => r.team === stockScope)
+        .map(r => ({ code: r.product_code, name: nameByCode[r.product_code] || r.product_code, stock_initial: r.allocated_total, stock_remaining: r.stock_remaining }));
+    }
+
     async function loadAll() {
-      const [{ data: prods, error: pErr }, { data: items, error: iErr }] = await Promise.all([
+      const [{ data: prods, error: pErr }, { data: items, error: iErr }, { data: ts, error: tErr }] = await Promise.all([
         sb().from("products").select("*"),
         sb().from("order_items").select("qty, unit_price, product_code, product_name, orders(team, status, created_at)"),
+        sb().from("team_stock").select("*"),
       ]);
       if (pErr) { toast(friendlyError(pErr), true); return; }
       products = prods || [];
+      teamStockAll = ts || [];
       renderStockTable();
 
       allActiveItems = (items || []).filter(it => it.orders?.status !== "cancelled");
@@ -165,7 +186,7 @@
 
     function renderStats(activeItems) {
       const totalRemaining = products.reduce((s, p) => s + p.stock_remaining, 0);
-      const outCount = products.filter(p => p.stock_remaining <= 0).length;
+      const teamTotal = teamStockAll.reduce((s, r) => s + r.stock_remaining, 0);
 
       let totalValue = 0, totalSold = 0;
       const byTeam = { A: { qty: 0, value: 0 }, B: { qty: 0, value: 0 }, C: { qty: 0, value: 0 } };
@@ -200,7 +221,7 @@
       document.getElementById("s-value").textContent = money(totalValue);
       document.getElementById("s-sold").textContent = totalSold.toLocaleString("th-TH");
       document.getElementById("s-remaining").textContent = totalRemaining.toLocaleString("th-TH");
-      document.getElementById("s-out").textContent = outCount;
+      document.getElementById("s-team-total").textContent = teamTotal.toLocaleString("th-TH");
 
       document.getElementById("team-body").innerHTML = ["A", "B", "C"].map(t =>
         `<tr><td>${teamLabel(t)}</td><td class="mono">${byTeam[t].qty}</td><td class="mono">${money(byTeam[t].value)}</td></tr>`
@@ -264,8 +285,12 @@
 
     function renderStockTable() {
       const tbody = document.getElementById("stock-body");
+      const thead = document.getElementById("stock-thead");
+      const initLabel = stockScope === "central" ? "ตั้งต้น" : "เคยเบิกรวม";
+      thead.innerHTML = `<tr><th>รหัส</th><th>ชื่อสินค้า</th><th>${initLabel}</th><th>คงเหลือ</th><th>สถานะ</th></tr>`;
+
       const term = searchTerm.trim().toLowerCase();
-      const filtered = products.filter(p => {
+      const filtered = currentScopeRows().filter(p => {
         const st = stockStatus(p);
         if (filter !== "all" && st !== filter) return false;
         if (term && !(p.name.toLowerCase().includes(term) || p.code.includes(term))) return false;
@@ -284,6 +309,15 @@
           }).join("")
         : `<tr><td colspan="5" class="muted">ไม่พบสินค้า</td></tr>`;
     }
+
+    document.querySelectorAll("[data-scope]").forEach(chip => {
+      chip.onclick = () => {
+        chip.parentElement.querySelectorAll("[data-scope]").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        stockScope = chip.dataset.scope;
+        renderStockTable();
+      };
+    });
 
     document.querySelectorAll("[data-f]").forEach(chip => {
       chip.onclick = () => {
