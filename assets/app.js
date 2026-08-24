@@ -123,7 +123,7 @@ async function downloadReceiptPdf(order) {
   const shortId = (order.id || "").slice(0, 8);
 
   const wrapper = document.createElement("div");
-  wrapper.style.cssText = "position:fixed;left:-9999px;top:0;width:560px;background:#fff;padding:28px;font-family:'Sarabun',sans-serif;color:#16231f;";
+  wrapper.style.cssText = "position:absolute;left:0;top:0;z-index:-1;width:560px;background:#fff;padding:28px;font-family:'Sarabun',sans-serif;color:#16231f;";
   wrapper.innerHTML = `
     <div style="text-align:center;margin-bottom:18px;">
       <div style="font-size:20px;font-weight:700;">คลังสินค้ากลาง</div>
