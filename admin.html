@@ -12,10 +12,10 @@
   <div class="page">
     <div class="page-head">
       <h1>จัดการสินค้า (Admin)</h1>
-      <p>เพิ่ม แก้ไข ปรับสต็อก และดูสถานะคำสั่งซื้อของทุกทีม</p>
+      <p>คลังกลาง → เบิกเข้าทีม A/B/C ปรับสต็อก และดูสถานะคำสั่งซื้อของทุกทีม</p>
     </div>
 
-    <div class="section-title">เพิ่มสินค้าใหม่</div>
+    <div class="section-title">เพิ่มสินค้าใหม่ (เข้าคลังกลาง)</div>
     <div class="card card-pad">
       <div class="field-row">
         <div>
@@ -33,7 +33,7 @@
           <input type="number" id="new-price" min="0" step="0.01" value="0">
         </div>
         <div>
-          <label>สต็อกตั้งต้น</label>
+          <label>สต็อกตั้งต้น (เข้าคลังกลาง)</label>
           <input type="number" id="new-stock" min="0" step="1" value="0">
         </div>
       </div>
@@ -41,27 +41,28 @@
       <div id="add-msg"></div>
     </div>
 
-    <div class="section-title">รายการสินค้าทั้งหมด</div>
+    <div class="section-title">รายการสินค้าทั้งหมด — คลังกลาง &amp; สต็อกแต่ละทีม</div>
+    <p class="muted" style="margin-top:-8px;">กด "จัดการสต็อก" เพื่อเบิกจากคลังกลางเข้าทีม หรือคืนจากทีมกลับเข้าคลังกลาง</p>
     <div class="toolbar">
       <input type="text" id="search" placeholder="ค้นหาชื่อหรือรหัสสินค้า...">
       <button class="filter-chip active" data-f="all">ทั้งหมด</button>
-      <button class="filter-chip" data-f="available">พร้อมขาย</button>
-      <button class="filter-chip" data-f="out">หมด</button>
+      <button class="filter-chip" data-f="available">คลังกลางมีของ</button>
+      <button class="filter-chip" data-f="out">คลังกลางหมด</button>
     </div>
     <div class="card">
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>รหัส</th><th>ชื่อสินค้า</th><th>ราคา</th><th>ตั้งต้น</th><th>คงเหลือ</th><th>ปรับสต็อก</th><th>จัดการ</th></tr>
+            <tr><th>รหัส</th><th>ชื่อสินค้า</th><th>ราคา</th><th>คลังกลาง</th><th>ทีม A</th><th>ทีม B</th><th>ทีม C</th><th>จัดการ</th></tr>
           </thead>
-          <tbody id="product-body"><tr><td colspan="7" class="muted">กำลังโหลด...</td></tr></tbody>
+          <tbody id="product-body"><tr><td colspan="8" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
 
     <div class="section-title">เพิ่มบิลย้อนหลัง (สำหรับยอดขายที่เกิดขึ้นก่อนเว็บพร้อมใช้งาน)</div>
     <div class="card card-pad">
-      <p class="muted" style="margin-top:0;">ใช้บันทึกบิลที่ขายไปแล้วจริงแต่ยังไม่เคยเข้าระบบ ตั้งวันที่ของบิลเองได้ — ค่าเริ่มต้นจะ <b>ไม่หักสต็อกซ้ำ</b> เพราะสต็อกคงเหลือที่มีอยู่มักหักยอดนี้ไปแล้ว ติ๊กเลือกได้ถ้าต้องการให้หักจริง</p>
+      <p class="muted" style="margin-top:0;">ใช้บันทึกบิลที่ขายไปแล้วจริงแต่ยังไม่เคยเข้าระบบ ตั้งวันที่ของบิลเองได้ — ค่าเริ่มต้นจะ <b>ไม่หักสต็อกซ้ำ</b> เพราะสต็อกคงเหลือที่มีอยู่มักหักยอดนี้ไปแล้ว ติ๊กเลือกได้ถ้าต้องการให้หักจริง (จะหักจากสต็อกทีมก่อน แล้วเบิกจากคลังกลางอัตโนมัติถ้าไม่พอ)</p>
       <div class="field-row">
         <div>
           <label>ทีม</label>
@@ -91,7 +92,7 @@
 
       <label style="display:flex;align-items:center;gap:8px;margin-top:16px;">
         <input type="checkbox" id="bo-deduct-stock" style="width:auto;">
-        <span style="font-weight:400;">หักสต็อกคงเหลือด้วย (ติ๊กเฉพาะถ้ายอดนี้ยังไม่เคยถูกหักในระบบ)</span>
+        <span style="font-weight:400;">หักสต็อกด้วย (ติ๊กเฉพาะถ้ายอดนี้ยังไม่เคยถูกหักในระบบ)</span>
       </label>
 
       <button class="btn btn-primary" id="bo-submit-btn" style="margin-top:16px;">บันทึกบิลย้อนหลัง</button>
@@ -110,6 +111,28 @@
         <table>
           <thead><tr><th>วันเวลา</th><th>ทีม</th><th>รายการ</th><th>มูลค่า</th><th>สถานะ</th><th colspan="2"></th></tr></thead>
           <tbody id="orders-body"><tr><td colspan="6" class="muted">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-title">ประวัติการทำรายการ</div>
+    <div class="toolbar">
+      <select id="log-filter" style="max-width:220px;">
+        <option value="all">ทั้งหมด</option>
+        <option value="sale">การขาย</option>
+        <option value="cancel">การยกเลิก</option>
+        <option value="allocate,return">การเบิก/คืนสต็อก</option>
+        <option value="add_product,edit_product,delete_product,adjust_stock">จัดการสินค้า/สต็อกกลาง</option>
+        <option value="backdated_order">บิลย้อนหลัง</option>
+        <option value="order_status">เปลี่ยนสถานะบิล</option>
+        <option value="password_reset">เปลี่ยนรหัสผ่าน</option>
+      </select>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>เวลา</th><th>โดย</th><th>รายละเอียด</th></tr></thead>
+          <tbody id="log-body"><tr><td colspan="3" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -153,6 +176,28 @@
     </div>
   </div>
 
+  <!-- Stock allocate/return modal -->
+  <div class="modal-backdrop" id="stock-modal" style="display:none;">
+    <div class="modal" style="max-width:560px;">
+      <h2>จัดการสต็อก: <span id="sm-name"></span></h2>
+      <p class="muted" id="sm-central" style="margin-top:-8px;"></p>
+
+      <div id="sm-team-rows"></div>
+
+      <div class="section-title" style="margin-top:22px;">ปรับสต็อกคลังกลางโดยตรง</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-ghost btn-sm" id="sm-central-minus">-1</button>
+        <button class="btn btn-ghost btn-sm" id="sm-central-plus">+1</button>
+        <button class="btn btn-ghost btn-sm" id="sm-central-custom">อื่นๆ</button>
+      </div>
+
+      <div id="sm-msg"></div>
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button class="btn btn-ghost" id="sm-close" style="flex:1;">ปิด</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
@@ -161,9 +206,11 @@
     renderTopbar("admin");
 
     let products = [];
+    let teamStockMap = {}; // code -> {A: n, B: n, C: n}
     let filter = "all";
     let orderFilter = "all";
     let searchTerm = "";
+    let logFilter = "all";
 
     function stockStatus(p) {
       if (p.stock_remaining <= 0) return "out";
@@ -173,9 +220,17 @@
     function statusLabel(s) { return { ok: "พร้อมขาย", low: "ใกล้หมด", out: "หมด" }[s]; }
 
     async function loadProducts() {
-      const { data, error } = await sb().from("products").select("*").order("name");
-      if (error) { toast(friendlyError(error), true); return; }
-      products = data || [];
+      const [{ data: prods, error: pErr }, { data: ts, error: tErr }] = await Promise.all([
+        sb().from("products").select("*").order("name"),
+        sb().from("team_stock").select("team, product_code, stock_remaining"),
+      ]);
+      if (pErr) { toast(friendlyError(pErr), true); return; }
+      products = prods || [];
+      teamStockMap = {};
+      (ts || []).forEach(row => {
+        if (!teamStockMap[row.product_code]) teamStockMap[row.product_code] = { A: 0, B: 0, C: 0 };
+        teamStockMap[row.product_code][row.team] = row.stock_remaining;
+      });
       renderTable();
       populateBoProductSelect();
     }
@@ -191,26 +246,23 @@
         return true;
       });
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="muted">ไม่พบสินค้า</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="muted">ไม่พบสินค้า</td></tr>`;
         return;
       }
       tbody.innerHTML = filtered.map(p => {
         const st = stockStatus(p);
+        const ts = teamStockMap[p.code] || { A: 0, B: 0, C: 0 };
         return `<tr>
           <td class="mono">${escapeHtml(p.code)}</td>
-          <td>${escapeHtml(p.name)}<br><span class="badge ${st}">${statusLabel(st)}</span></td>
+          <td>${escapeHtml(p.name)}<br><span class="badge ${st}">คลังกลาง: ${statusLabel(st)}</span></td>
           <td>${money(p.price)}</td>
-          <td>${p.stock_initial}</td>
           <td class="mono">${p.stock_remaining}</td>
+          <td class="mono">${ts.A}</td>
+          <td class="mono">${ts.B}</td>
+          <td class="mono">${ts.C}</td>
           <td>
-            <div style="display:flex;gap:4px;align-items:center;">
-              <button class="btn btn-ghost btn-sm" data-adj="-1" data-code="${p.code}">-1</button>
-              <button class="btn btn-ghost btn-sm" data-adj="1" data-code="${p.code}">+1</button>
-              <button class="btn btn-ghost btn-sm" data-adjcustom="${p.code}">อื่นๆ</button>
-            </div>
-          </td>
-          <td>
-            <div style="display:flex;gap:4px;">
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-sm" data-manage="${p.code}">จัดการสต็อก</button>
               <button class="btn btn-ghost btn-sm" data-edit="${p.code}">แก้ไข</button>
               <button class="btn btn-danger btn-sm" data-del="${p.code}">ลบ</button>
             </div>
@@ -218,17 +270,8 @@
         </tr>`;
       }).join("");
 
-      tbody.querySelectorAll("[data-adj]").forEach(b => {
-        b.onclick = () => adjustStock(b.dataset.code, parseInt(b.dataset.adj, 10));
-      });
-      tbody.querySelectorAll("[data-adjcustom]").forEach(b => {
-        b.onclick = () => {
-          const v = prompt("ระบุจำนวนที่ต้องการปรับ (ใส่ค่าลบเพื่อลด เช่น -5)");
-          if (v === null) return;
-          const delta = parseInt(v, 10);
-          if (isNaN(delta) || delta === 0) return;
-          adjustStock(b.dataset.adjcustom, delta);
-        };
+      tbody.querySelectorAll("[data-manage]").forEach(b => {
+        b.onclick = () => openStockModal(b.dataset.manage);
       });
       tbody.querySelectorAll("[data-edit]").forEach(b => {
         b.onclick = () => openEdit(b.dataset.edit);
@@ -238,17 +281,8 @@
       });
     }
 
-    async function adjustStock(code, delta) {
-      const { error } = await sb().rpc("admin_adjust_stock", {
-        p_password: session.password, p_code: code, p_delta: delta, p_note: null,
-      });
-      if (error) { toast(friendlyError(error), true); return; }
-      toast(delta > 0 ? `เพิ่มสต็อก +${delta}` : `ลดสต็อก ${delta}`);
-      loadProducts();
-    }
-
     async function deleteProduct(code) {
-      if (!confirm("ยืนยันลบสินค้านี้ออกจากระบบ?")) return;
+      if (!confirm("ยืนยันลบสินค้านี้ออกจากระบบ? (สต็อกที่เบิกเข้าทีมไปแล้วจะหายไปด้วย)")) return;
       const { error } = await sb().rpc("admin_delete_product", { p_password: session.password, p_code: code });
       if (error) { toast(friendlyError(error), true); return; }
       toast("ลบสินค้าแล้ว");
@@ -299,11 +333,91 @@
       loadProducts();
     };
 
+    // ---------- โมดัลจัดการสต็อก: เบิกเข้าทีม / คืนเข้าคลังกลาง ----------
+    let smCode = null;
+
+    function openStockModal(code) {
+      smCode = code;
+      renderStockModal();
+      document.getElementById("sm-msg").innerHTML = "";
+      document.getElementById("stock-modal").style.display = "flex";
+    }
+    document.getElementById("sm-close").onclick = () => { document.getElementById("stock-modal").style.display = "none"; };
+
+    function renderStockModal() {
+      const p = products.find(x => x.code === smCode);
+      if (!p) return;
+      const ts = teamStockMap[p.code] || { A: 0, B: 0, C: 0 };
+      document.getElementById("sm-name").textContent = p.name;
+      document.getElementById("sm-central").textContent = `คลังกลางคงเหลือ: ${p.stock_remaining} ชิ้น`;
+      document.getElementById("sm-team-rows").innerHTML = ["A", "B", "C"].map(t => `
+        <div class="card card-pad" style="margin-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <b>${teamLabel(t)}</b>
+            <span class="mono">คงเหลือในทีม: ${ts[t]} ชิ้น</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:center;">
+            <input type="number" min="1" value="1" id="sm-qty-${t}" style="max-width:90px;">
+            <button class="btn btn-primary btn-sm" data-alloc="${t}">เบิกเข้าทีม</button>
+            <button class="btn btn-ghost btn-sm" data-return="${t}">คืนเข้าคลังกลาง</button>
+          </div>
+        </div>
+      `).join("");
+
+      document.getElementById("sm-team-rows").querySelectorAll("[data-alloc]").forEach(b => {
+        b.onclick = async () => {
+          const t = b.dataset.alloc;
+          const qty = parseInt(document.getElementById(`sm-qty-${t}`).value || "0", 10);
+          if (!qty || qty <= 0) { toast("กรุณาระบุจำนวนให้ถูกต้อง", true); return; }
+          const { error } = await sb().rpc("admin_allocate_to_team", {
+            p_password: session.password, p_code: smCode, p_team: t, p_qty: qty,
+          });
+          if (error) { document.getElementById("sm-msg").innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
+          document.getElementById("sm-msg").innerHTML = `<div class="ok-msg">เบิก ${qty} ชิ้น เข้าทีม ${t} เรียบร้อย</div>`;
+          await loadProducts();
+          renderStockModal();
+        };
+      });
+      document.getElementById("sm-team-rows").querySelectorAll("[data-return]").forEach(b => {
+        b.onclick = async () => {
+          const t = b.dataset.return;
+          const qty = parseInt(document.getElementById(`sm-qty-${t}`).value || "0", 10);
+          if (!qty || qty <= 0) { toast("กรุณาระบุจำนวนให้ถูกต้อง", true); return; }
+          const { error } = await sb().rpc("admin_return_to_central", {
+            p_password: session.password, p_code: smCode, p_team: t, p_qty: qty,
+          });
+          if (error) { document.getElementById("sm-msg").innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
+          document.getElementById("sm-msg").innerHTML = `<div class="ok-msg">คืน ${qty} ชิ้น จากทีม ${t} เข้าคลังกลางเรียบร้อย</div>`;
+          await loadProducts();
+          renderStockModal();
+        };
+      });
+    }
+
+    async function centralAdjust(delta) {
+      const { error } = await sb().rpc("admin_adjust_stock", {
+        p_password: session.password, p_code: smCode, p_delta: delta, p_note: null,
+      });
+      if (error) { document.getElementById("sm-msg").innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
+      document.getElementById("sm-msg").innerHTML = `<div class="ok-msg">ปรับสต็อกคลังกลางแล้ว</div>`;
+      await loadProducts();
+      renderStockModal();
+    }
+    document.getElementById("sm-central-minus").onclick = () => centralAdjust(-1);
+    document.getElementById("sm-central-plus").onclick = () => centralAdjust(1);
+    document.getElementById("sm-central-custom").onclick = () => {
+      const v = prompt("ระบุจำนวนที่ต้องการปรับคลังกลาง (ใส่ค่าลบเพื่อลด เช่น -5)");
+      if (v === null) return;
+      const delta = parseInt(v, 10);
+      if (isNaN(delta) || delta === 0) return;
+      centralAdjust(delta);
+    };
+
     async function loadOrders() {
       const tbody = document.getElementById("orders-body");
       let query = sb()
         .from("orders")
-        .select("id, team, status, created_at, order_items(qty, unit_price, product_name)")
+        .select("id, team, status, created_at, order_items(qty, unit_price, product_name, from_central_qty)")
         .order("created_at", { ascending: false })
         .limit(100);
       if (orderFilter !== "all") query = query.eq("status", orderFilter);
@@ -315,7 +429,8 @@
       }
       tbody.innerHTML = orders.map(o => {
         const items = o.order_items || [];
-        const summary = items.map(i => `${escapeHtml(i.product_name)} ×${i.qty}`).join(", ");
+        const toppedUp = items.some(i => (i.from_central_qty || 0) > 0);
+        const summary = items.map(i => `${escapeHtml(i.product_name)} ×${i.qty}${i.from_central_qty ? ` (เบิกกลาง ${i.from_central_qty})` : ""}`).join(", ");
         const total = items.reduce((s, i) => s + i.qty * (i.unit_price || 0), 0);
         const dt = new Date(o.created_at).toLocaleString("th-TH");
         const statusText = { open: "กำลังดำเนินการ", completed: "จบการขาย", cancelled: "ยกเลิกแล้ว" }[o.status] || o.status;
@@ -325,7 +440,7 @@
         return `<tr>
           <td>${dt}</td>
           <td><span class="team-pill" style="background:var(--paper);color:var(--ink);border:1px solid var(--line);">${teamLabel(o.team)}</span></td>
-          <td style="max-width:320px;">${summary}</td>
+          <td style="max-width:320px;">${summary} ${toppedUp ? `<span class="badge low">⚡ เบิกจากคลังกลาง</span>` : ""}</td>
           <td>${money(total)}</td>
           <td><span class="status-pill ${o.status}">${statusText}</span></td>
           <td>${isCancelled ? "" : `<button class="btn btn-ghost btn-sm" data-toggle="${o.id}" data-next="${nextStatus}">${nextLabel}</button>`}</td>
@@ -357,6 +472,31 @@
       });
     }
 
+    // ---------- ประวัติการทำรายการ ----------
+    async function loadLog() {
+      const tbody = document.getElementById("log-body");
+      let query = sb().from("activity_log").select("*").order("created_at", { ascending: false }).limit(150);
+      if (logFilter !== "all") {
+        const actions = logFilter.split(",");
+        query = query.in("action", actions);
+      }
+      const { data, error } = await query;
+      if (error) { tbody.innerHTML = `<tr><td colspan="3" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" class="muted">ไม่มีประวัติ</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = data.map(r => {
+        const dt = new Date(r.created_at).toLocaleString("th-TH");
+        const actor = r.actor === "ADMIN" ? "Admin" : teamLabel(r.actor);
+        return `<tr><td>${dt}</td><td>${escapeHtml(actor)}</td><td>${escapeHtml(r.detail)}</td></tr>`;
+      }).join("");
+    }
+    document.getElementById("log-filter").addEventListener("change", (e) => {
+      logFilter = e.target.value;
+      loadLog();
+    });
+
     document.getElementById("change-pw-btn").onclick = async () => {
       const team = document.getElementById("pw-team").value;
       const newPw = document.getElementById("pw-new").value;
@@ -370,6 +510,7 @@
       if (team === "ADMIN") saveSession("ADMIN", newPw);
       msgEl.innerHTML = `<div class="ok-msg">เปลี่ยนรหัสผ่านของ ${escapeHtml(teamLabel(team))} เรียบร้อย</div>`;
       document.getElementById("pw-new").value = "";
+      loadLog();
     };
 
     document.querySelectorAll("[data-f]").forEach(chip => {
@@ -400,7 +541,7 @@
       const sel = document.getElementById("bo-product-select");
       const current = sel.value;
       sel.innerHTML = `<option value="">— เลือกสินค้า —</option>` +
-        products.map(p => `<option value="${p.code}">${escapeHtml(p.name)} (คงเหลือ ${p.stock_remaining})</option>`).join("");
+        products.map(p => `<option value="${p.code}">${escapeHtml(p.name)} (คลังกลาง ${p.stock_remaining})</option>`).join("");
       sel.value = current;
     }
 
@@ -470,6 +611,7 @@
         setBoDefaultDate();
         document.getElementById("bo-deduct-stock").checked = false;
         loadOrders();
+        loadLog();
         if (deduct) loadProducts();
       } catch (e) {
         msgEl.innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(e))}</div>`;
@@ -482,6 +624,7 @@
 
     loadProducts();
     loadOrders();
+    loadLog();
   </script>
 </body>
 </html>
