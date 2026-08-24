@@ -30,8 +30,8 @@
     <div class="card card-pad">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>วันเวลา</th><th>รายการ</th><th>มูลค่า</th><th>สถานะ</th></tr></thead>
-          <tbody id="orders-body"><tr><td colspan="4" class="muted">กำลังโหลด...</td></tr></tbody>
+          <thead><tr><th>วันเวลา</th><th>รายการ</th><th>มูลค่า</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody id="orders-body"><tr><td colspan="5" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -64,6 +64,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -115,9 +117,9 @@
         .eq("team", session.team)
         .order("created_at", { ascending: false })
         .limit(20);
-      if (error) { tbody.innerHTML = `<tr><td colspan="4" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
+      if (error) { tbody.innerHTML = `<tr><td colspan="5" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
       if (!orders || orders.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="muted">ยังไม่มีรายการสั่งซื้อ</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="muted">ยังไม่มีรายการสั่งซื้อ</td></tr>`;
         return;
       }
       tbody.innerHTML = orders.map(o => {
@@ -132,8 +134,16 @@
           <td style="max-width:340px;">${summary}${toppedUp ? ` <span class="badge low">⚡ เบิกจากคลังกลาง</span>` : ""}</td>
           <td>${money(total)}</td>
           <td><span class="status-pill ${o.status}">${statusText}</span></td>
+          <td><button class="btn btn-ghost btn-sm" data-receipt="${o.id}">📄 ใบเสร็จ</button></td>
         </tr>`;
       }).join("");
+
+      tbody.querySelectorAll("[data-receipt]").forEach(btn => {
+        btn.onclick = () => {
+          const order = orders.find(o => o.id === btn.dataset.receipt);
+          if (order) downloadReceiptPdf(order);
+        };
+      });
     }
 
     function renderGrid() {
