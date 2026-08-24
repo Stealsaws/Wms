@@ -195,6 +195,12 @@ function friendlyError(err) {
     const left = parts[2] ?? "0";
     return `${name} ในทีมนี้มีไม่พอที่จะคืน (มีอยู่ ${left} ชิ้น)`;
   }
+  if (msg.startsWith("INSUFFICIENT_SAMPLE_STOCK")) {
+    const parts = msg.split(":")[1]?.split("|") || [];
+    const name = parts[1] || "สินค้านี้";
+    const left = parts[2] ?? "0";
+    return `${name} มีในสต็อกตัวอย่างไม่พอ (มีอยู่ ${left} ชิ้น)`;
+  }
   if (msg.startsWith("PRODUCT_NOT_FOUND")) return "ไม่พบสินค้านี้ในระบบ";
   if (msg.includes("EMPTY_CART")) return "ยังไม่ได้เลือกสินค้าในตะกร้า";
   if (msg.includes("INVALID_TEAM")) return "ทีมไม่ถูกต้อง";
