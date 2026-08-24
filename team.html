@@ -12,7 +12,7 @@
   <div class="page">
     <div class="page-head">
       <h1>สั่งซื้อสินค้า</h1>
-      <p>เลือกสินค้าที่ต้องการ ระบบจะตัดสต็อกจากคลังกลางทันทีเมื่อยืนยัน</p>
+      <p>สินค้าที่แสดงคือสต็อกที่เบิกเข้าทีมนี้แล้ว — ถ้าซื้อเกินที่มี ระบบจะเบิกเพิ่มจากคลังกลางให้อัตโนมัติถ้ามีพอ</p>
     </div>
 
     <div class="toolbar">
@@ -54,6 +54,7 @@
       <h2>ตะกร้าสินค้า</h2>
       <div id="cart-lines"></div>
       <div id="cart-total" style="margin-top:10px;font-weight:700;"></div>
+      <div id="cart-warn"></div>
       <div id="cart-msg"></div>
       <div style="display:flex;gap:10px;margin-top:18px;">
         <button class="btn btn-ghost" id="cancel-cart-btn" style="flex:1;">ปิด</button>
@@ -69,24 +70,40 @@
     const session = requireSession("TEAM");
     renderTopbar("team");
 
-    let products = [];
+    let products = []; // { code, name, price, team_remaining, central_remaining, combined }
     let filter = "all";
     let searchTerm = "";
     let cart = {}; // code -> qty
 
     function stockStatus(p) {
-      if (p.stock_remaining <= 0) return "out";
-      if (p.stock_remaining <= Math.max(3, p.stock_initial * 0.15)) return "low";
+      if (p.combined <= 0) return "out";
+      if (p.combined <= 3) return "low";
       return "ok";
     }
-    function statusLabel(s) {
-      return { ok: "พร้อมขาย", low: "ใกล้หมด", out: "หมด" }[s];
-    }
+    function statusLabel(s) { return { ok: "พร้อมขาย", low: "ใกล้หมด", out: "หมด" }[s]; }
 
     async function loadProducts() {
-      const { data, error } = await sb().from("products").select("*").order("name");
-      if (error) { toast(friendlyError(error), true); return; }
-      products = data || [];
+      const [{ data: allProds, error: pErr }, { data: myStock, error: tErr }] = await Promise.all([
+        sb().from("products").select("code, name, price, stock_remaining"),
+        sb().from("team_stock").select("product_code, stock_remaining").eq("team", session.team),
+      ]);
+      if (pErr) { toast(friendlyError(pErr), true); return; }
+      const teamMap = {};
+      (myStock || []).forEach(r => { teamMap[r.product_code] = r.stock_remaining; });
+
+      // แสดงเฉพาะสินค้าที่ทีมนี้เคยมีสต็อก หรือคลังกลางยังมีเหลือให้เบิกฉุกเฉินได้
+      products = (allProds || [])
+        .map(p => {
+          const team_remaining = teamMap[p.code] || 0;
+          const central_remaining = p.stock_remaining || 0;
+          return {
+            code: p.code, name: p.name, price: p.price,
+            team_remaining, central_remaining,
+            combined: team_remaining + central_remaining,
+          };
+        })
+        .filter(p => p.team_remaining > 0 || p.central_remaining > 0)
+        .sort((a, b) => a.name.localeCompare(b.name, "th"));
       renderGrid();
     }
 
@@ -94,7 +111,7 @@
       const tbody = document.getElementById("orders-body");
       const { data: orders, error } = await sb()
         .from("orders")
-        .select("id, status, created_at, order_items(qty, unit_price, product_name)")
+        .select("id, status, created_at, order_items(qty, unit_price, product_name, from_central_qty)")
         .eq("team", session.team)
         .order("created_at", { ascending: false })
         .limit(20);
@@ -105,13 +122,14 @@
       }
       tbody.innerHTML = orders.map(o => {
         const items = o.order_items || [];
+        const toppedUp = items.some(i => (i.from_central_qty || 0) > 0);
         const summary = items.map(i => `${escapeHtml(i.product_name)} ×${i.qty}`).join(", ");
         const total = items.reduce((s, i) => s + i.qty * (i.unit_price || 0), 0);
         const dt = new Date(o.created_at).toLocaleString("th-TH");
         const statusText = { open: "กำลังดำเนินการ", completed: "จบการขาย", cancelled: "ยกเลิกแล้ว" }[o.status] || o.status;
         return `<tr>
           <td>${dt}</td>
-          <td style="max-width:340px;">${summary}</td>
+          <td style="max-width:340px;">${summary}${toppedUp ? ` <span class="badge low">⚡ เบิกจากคลังกลาง</span>` : ""}</td>
           <td>${money(total)}</td>
           <td><span class="status-pill ${o.status}">${statusText}</span></td>
         </tr>`;
@@ -131,14 +149,18 @@
       document.getElementById("empty").style.display = filtered.length ? "none" : "block";
       grid.innerHTML = filtered.map(p => {
         const st = stockStatus(p);
-        const pct = p.stock_initial > 0 ? Math.max(0, Math.min(100, (p.stock_remaining / p.stock_initial) * 100)) : 0;
+        const pct = p.combined > 0 ? Math.max(6, Math.min(100, (p.team_remaining / p.combined) * 100)) : 0;
         const inCart = cart[p.code] || 0;
+        const centralNote = p.central_remaining > 0
+          ? `<div class="muted" style="font-size:.72rem;">คลังกลางเหลือ ${p.central_remaining} ชิ้น (เบิกเพิ่มได้ถ้าซื้อเกิน)</div>`
+          : "";
         return `
         <div class="p-card">
           <div class="code mono">${escapeHtml(p.code)}</div>
           <div class="name">${escapeHtml(p.name)}</div>
-          <span class="badge ${st}">${statusLabel(st)} · เหลือ ${p.stock_remaining}</span>
+          <span class="badge ${st}">${statusLabel(st)} · ทีมนี้มี ${p.team_remaining}</span>
           <div class="stock-bar ${st}"><div style="width:${pct}%"></div></div>
+          ${centralNote}
           <div class="qty-row">
             <button class="qbtn" data-act="minus" data-code="${p.code}" ${st === "out" ? "disabled" : ""}>−</button>
             <input type="number" min="0" value="${inCart}" data-code="${p.code}" ${st === "out" ? "disabled" : ""}>
@@ -153,7 +175,7 @@
           const p = products.find(x => x.code === code);
           let q = cart[code] || 0;
           q += b.dataset.act === "plus" ? 1 : -1;
-          q = Math.max(0, Math.min(q, p.stock_remaining));
+          q = Math.max(0, Math.min(q, p.combined));
           setCartQty(code, q);
         };
       });
@@ -161,7 +183,7 @@
         inp.onchange = () => {
           const code = inp.dataset.code;
           const p = products.find(x => x.code === code);
-          let q = Math.max(0, Math.min(parseInt(inp.value || "0", 10) || 0, p.stock_remaining));
+          let q = Math.max(0, Math.min(parseInt(inp.value || "0", 10) || 0, p.combined));
           setCartQty(code, q);
         };
       });
@@ -188,18 +210,24 @@
       const codes = Object.keys(cart);
       const linesEl = document.getElementById("cart-lines");
       let total = 0;
+      let willTopUp = false;
       linesEl.innerHTML = codes.map(code => {
         const p = products.find(x => x.code === code);
         const qty = cart[code];
         const lineTotal = (p.price || 0) * qty;
         total += lineTotal;
+        const needsTopUp = qty > p.team_remaining;
+        if (needsTopUp) willTopUp = true;
         return `<div class="cart-line">
-          <span class="nm">${escapeHtml(p.name)} × ${qty}</span>
+          <span class="nm">${escapeHtml(p.name)} × ${qty}${needsTopUp ? ` <span class="badge low">⚡ เบิกกลาง ${qty - p.team_remaining}</span>` : ""}</span>
           <span class="mono">${money(lineTotal)}</span>
           <button class="rm" data-code="${code}">ลบ</button>
         </div>`;
       }).join("") || `<p class="muted">ยังไม่มีสินค้าในตะกร้า</p>`;
       document.getElementById("cart-total").textContent = `รวมทั้งหมด: ${money(total)} บาท`;
+      document.getElementById("cart-warn").innerHTML = willTopUp
+        ? `<div class="error-msg" style="background:var(--amber-soft);color:#7a4a12;border-color:#e3c48b;">⚡ บางรายการมีในทีมไม่พอ ระบบจะเบิกเพิ่มจากคลังกลางให้อัตโนมัติเมื่อยืนยัน</div>`
+        : "";
       linesEl.querySelectorAll(".rm").forEach(btn => {
         btn.onclick = () => { setCartQty(btn.dataset.code, 0); renderCartModal(); };
       });
@@ -224,18 +252,20 @@
       btn.textContent = "กำลังบันทึก...";
       try {
         const items = codes.map(code => ({ code, qty: cart[code] }));
-        const { error } = await sb().rpc("purchase_cart", {
+        const { data, error } = await sb().rpc("purchase_cart", {
           p_team: session.team,
           p_password: session.password,
           p_items: items,
         });
         if (error) throw error;
-        msgEl.innerHTML = `<div class="ok-msg">ซื้อสำเร็จ! สต็อกถูกตัดเรียบร้อยแล้ว</div>`;
+        msgEl.innerHTML = data?.topped_up
+          ? `<div class="ok-msg">ซื้อสำเร็จ! บางรายการเบิกเพิ่มจากคลังกลางให้อัตโนมัติ</div>`
+          : `<div class="ok-msg">ซื้อสำเร็จ! สต็อกถูกตัดเรียบร้อยแล้ว</div>`;
         cart = {};
         renderCartBar();
         await loadProducts();
         await loadOrders();
-        setTimeout(() => { document.getElementById("cart-modal").style.display = "none"; }, 900);
+        setTimeout(() => { document.getElementById("cart-modal").style.display = "none"; }, 1100);
       } catch (e) {
         msgEl.innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(e))}</div>`;
         await loadProducts(); // stock may have changed under us — refresh
