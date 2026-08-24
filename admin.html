@@ -53,7 +53,16 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>รหัส</th><th>ชื่อสินค้า</th><th>ราคา</th><th>คลังกลาง</th><th>ทีม A</th><th>ทีม B</th><th>ทีม C</th><th>จัดการ</th></tr>
+            <tr>
+              <th>รหัส</th>
+              <th>ชื่อสินค้า</th>
+              <th class="sortable" data-sort="price">ราคา</th>
+              <th class="sortable" data-sort="central">คลังกลาง</th>
+              <th class="sortable" data-sort="A">ทีม A</th>
+              <th class="sortable" data-sort="B">ทีม B</th>
+              <th class="sortable" data-sort="C">ทีม C</th>
+              <th>จัดการ</th>
+            </tr>
           </thead>
           <tbody id="product-body"><tr><td colspan="8" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
@@ -109,7 +118,16 @@
     <div class="card">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>วันเวลา</th><th>ทีม</th><th>รายการ</th><th>มูลค่า</th><th>สถานะ</th><th colspan="2"></th></tr></thead>
+          <thead>
+            <tr>
+              <th class="sortable" data-sort="date">วันเวลา</th>
+              <th>ทีม</th>
+              <th>รายการ</th>
+              <th class="sortable" data-sort="total">มูลค่า</th>
+              <th>สถานะ</th>
+              <th colspan="2"></th>
+            </tr>
+          </thead>
           <tbody id="orders-body"><tr><td colspan="6" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
@@ -211,6 +229,8 @@
     let orderFilter = "all";
     let searchTerm = "";
     let logFilter = "all";
+    let productSort = { field: null, dir: "desc" };
+    let orderSort = { field: null, dir: "desc" };
 
     function stockStatus(p) {
       if (p.stock_remaining <= 0) return "out";
@@ -218,6 +238,44 @@
       return "ok";
     }
     function statusLabel(s) { return { ok: "พร้อมขาย", low: "ใกล้หมด", out: "หมด" }[s]; }
+
+    // ---------- ตัวช่วยเรียงลำดับตาราง (คลิกหัวคอลัมน์) ----------
+    function wireSortableHeaders(tbodyId, state, onChange) {
+      const table = document.getElementById(tbodyId).closest("table");
+      table.querySelectorAll("th.sortable").forEach(th => {
+        const label = th.textContent.trim();
+        th.innerHTML = `${label} <span class="arrow">▼</span>`;
+        th.onclick = () => {
+          if (state.field === th.dataset.sort) {
+            state.dir = state.dir === "desc" ? "asc" : "desc";
+          } else {
+            state.field = th.dataset.sort;
+            state.dir = "desc"; // ค่าเริ่มต้น: มากไปหาน้อย
+          }
+          table.querySelectorAll("th.sortable").forEach(t => {
+            t.classList.remove("sorted");
+            t.querySelector(".arrow").textContent = "▼";
+          });
+          th.classList.add("sorted");
+          th.querySelector(".arrow").textContent = state.dir === "desc" ? "▼" : "▲";
+          onChange();
+        };
+      });
+    }
+
+    function applySort(rows, state, getValue) {
+      if (!state.field) return rows;
+      const sorted = [...rows].sort((a, b) => {
+        const va = getValue(a, state.field);
+        const vb = getValue(b, state.field);
+        if (typeof va === "string" || typeof vb === "string") {
+          return String(va).localeCompare(String(vb), "th");
+        }
+        return va - vb;
+      });
+      if (state.dir === "desc") sorted.reverse();
+      return sorted;
+    }
 
     async function loadProducts() {
       const [{ data: prods, error: pErr }, { data: ts, error: tErr }] = await Promise.all([
@@ -238,12 +296,17 @@
     function renderTable() {
       const tbody = document.getElementById("product-body");
       const term = searchTerm.trim().toLowerCase();
-      const filtered = products.filter(p => {
+      let filtered = products.filter(p => {
         const st = stockStatus(p);
         if (filter === "available" && st === "out") return false;
         if (filter === "out" && st !== "out") return false;
         if (term && !(p.name.toLowerCase().includes(term) || p.code.includes(term))) return false;
         return true;
+      });
+      filtered = applySort(filtered, productSort, (p, field) => {
+        if (field === "price") return p.price || 0;
+        if (field === "central") return p.stock_remaining || 0;
+        return (teamStockMap[p.code] || {})[field] || 0; // A / B / C
       });
       if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="muted">ไม่พบสินค้า</td></tr>`;
@@ -427,7 +490,12 @@
         tbody.innerHTML = `<tr><td colspan="6" class="muted">ไม่มีรายการ</td></tr>`;
         return;
       }
-      tbody.innerHTML = orders.map(o => {
+      const sortedOrders = applySort(orders, orderSort, (o, field) => {
+        if (field === "date") return new Date(o.created_at).getTime();
+        if (field === "total") return (o.order_items || []).reduce((s, i) => s + i.qty * (i.unit_price || 0), 0);
+        return 0;
+      });
+      tbody.innerHTML = sortedOrders.map(o => {
         const items = o.order_items || [];
         const toppedUp = items.some(i => (i.from_central_qty || 0) > 0);
         const summary = items.map(i => `${escapeHtml(i.product_name)} ×${i.qty}${i.from_central_qty ? ` (เบิกกลาง ${i.from_central_qty})` : ""}`).join(", ");
@@ -625,6 +693,8 @@
     loadProducts();
     loadOrders();
     loadLog();
+    wireSortableHeaders("product-body", productSort, renderTable);
+    wireSortableHeaders("orders-body", orderSort, loadOrders);
   </script>
 </body>
 </html>
