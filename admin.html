@@ -126,10 +126,11 @@
               <th class="sortable" data-sort="total">มูลค่า</th>
               <th>สถานะ</th>
               <th></th>
+              <th></th>
               <th colspan="2"></th>
             </tr>
           </thead>
-          <tbody id="orders-body"><tr><td colspan="7" class="muted">กำลังโหลด...</td></tr></tbody>
+          <tbody id="orders-body"><tr><td colspan="9" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -490,9 +491,9 @@
         .limit(100);
       if (orderFilter !== "all") query = query.eq("status", orderFilter);
       const { data: orders, error } = await query;
-      if (error) { tbody.innerHTML = `<tr><td colspan="7" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
+      if (error) { tbody.innerHTML = `<tr><td colspan="9" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
       if (!orders || orders.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="muted">ไม่มีรายการ</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="muted">ไม่มีรายการ</td></tr>`;
         return;
       }
       const sortedOrders = applySort(orders, orderSort, (o, field) => {
@@ -517,6 +518,7 @@
           <td>${money(total)}</td>
           <td><span class="status-pill ${o.status}">${statusText}</span></td>
           <td><button class="btn btn-ghost btn-sm" data-receipt="${o.id}">📄 ใบเสร็จ</button></td>
+          <td>${isCancelled ? "" : `<button class="btn btn-ghost btn-sm" data-allocfrom="${o.id}">📥 เบิกเข้าตามบิลนี้</button>`}</td>
           <td>${isCancelled ? "" : `<button class="btn btn-ghost btn-sm" data-toggle="${o.id}" data-next="${nextStatus}">${nextLabel}</button>`}</td>
           <td>${isCancelled ? "" : `<button class="btn btn-danger btn-sm" data-cancel="${o.id}">ยกเลิกออเดอร์</button>`}</td>
         </tr>`;
@@ -526,6 +528,22 @@
         btn.onclick = () => {
           const order = sortedOrders.find(o => o.id === btn.dataset.receipt);
           if (order) downloadReceiptPdf(order);
+        };
+      });
+      tbody.querySelectorAll("[data-allocfrom]").forEach(btn => {
+        btn.onclick = async () => {
+          const order = sortedOrders.find(o => o.id === btn.dataset.allocfrom);
+          if (!order) return;
+          const items = (order.order_items || []).map(i => `${i.product_name} ×${i.qty}`).join(", ");
+          if (!confirm(`เบิกจากคลังกลางเข้าทีม ${order.team} ตามรายการนี้?\n${items}`)) return;
+          const { error } = await sb().rpc("admin_allocate_from_order", {
+            p_password: session.password, p_order_id: order.id,
+          });
+          if (error) { toast(friendlyError(error), true); return; }
+          toast("เบิกเข้าทีมตามบิลนี้เรียบร้อย");
+          loadOrders();
+          loadProducts();
+          loadLog();
         };
       });
 
