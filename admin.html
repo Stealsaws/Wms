@@ -125,10 +125,11 @@
               <th>รายการ</th>
               <th class="sortable" data-sort="total">มูลค่า</th>
               <th>สถานะ</th>
+              <th></th>
               <th colspan="2"></th>
             </tr>
           </thead>
-          <tbody id="orders-body"><tr><td colspan="6" class="muted">กำลังโหลด...</td></tr></tbody>
+          <tbody id="orders-body"><tr><td colspan="7" class="muted">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -217,6 +218,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -487,9 +490,9 @@
         .limit(100);
       if (orderFilter !== "all") query = query.eq("status", orderFilter);
       const { data: orders, error } = await query;
-      if (error) { tbody.innerHTML = `<tr><td colspan="6" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
+      if (error) { tbody.innerHTML = `<tr><td colspan="7" class="muted">โหลดไม่สำเร็จ</td></tr>`; return; }
       if (!orders || orders.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="muted">ไม่มีรายการ</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="muted">ไม่มีรายการ</td></tr>`;
         return;
       }
       const sortedOrders = applySort(orders, orderSort, (o, field) => {
@@ -513,10 +516,18 @@
           <td style="max-width:320px;">${summary} ${toppedUp ? `<span class="badge low">⚡ เบิกจากคลังกลาง</span>` : ""}</td>
           <td>${money(total)}</td>
           <td><span class="status-pill ${o.status}">${statusText}</span></td>
+          <td><button class="btn btn-ghost btn-sm" data-receipt="${o.id}">📄 ใบเสร็จ</button></td>
           <td>${isCancelled ? "" : `<button class="btn btn-ghost btn-sm" data-toggle="${o.id}" data-next="${nextStatus}">${nextLabel}</button>`}</td>
           <td>${isCancelled ? "" : `<button class="btn btn-danger btn-sm" data-cancel="${o.id}">ยกเลิกออเดอร์</button>`}</td>
         </tr>`;
       }).join("");
+
+      tbody.querySelectorAll("[data-receipt]").forEach(btn => {
+        btn.onclick = () => {
+          const order = sortedOrders.find(o => o.id === btn.dataset.receipt);
+          if (order) downloadReceiptPdf(order);
+        };
+      });
 
       tbody.querySelectorAll("[data-toggle]").forEach(b => {
         b.onclick = async () => {
