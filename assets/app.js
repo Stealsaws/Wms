@@ -108,7 +108,75 @@ function renderTopbar(active) {
   if (btn) btn.onclick = () => { clearSession(); location.href = "index.html"; };
 }
 
-// Parses the specific error strings raised by our Postgres functions
+// Renders an order as a Thai-friendly PDF receipt and triggers a download.
+// Needs jsPDF + html2canvas loaded on the page (team.html / admin.html) before this runs.
+async function downloadReceiptPdf(order) {
+  if (!window.jspdf || !window.html2canvas) {
+    toast("ไม่พบไลบรารีสร้าง PDF กรุณารีเฟรชหน้าเว็บแล้วลองใหม่", true);
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const items = order.order_items || [];
+  const total = items.reduce((s, i) => s + i.qty * (i.unit_price || 0), 0);
+  const statusText = { open: "กำลังดำเนินการ", completed: "จบการขาย", cancelled: "ยกเลิกแล้ว" }[order.status] || order.status;
+  const dt = new Date(order.created_at).toLocaleString("th-TH");
+  const shortId = (order.id || "").slice(0, 8);
+
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "position:fixed;left:-9999px;top:0;width:560px;background:#fff;padding:28px;font-family:'Sarabun',sans-serif;color:#16231f;";
+  wrapper.innerHTML = `
+    <div style="text-align:center;margin-bottom:18px;">
+      <div style="font-size:20px;font-weight:700;">คลังสินค้ากลาง</div>
+      <div style="font-size:13px;color:#4c5c56;">ใบสรุปรายการสั่งซื้อ</div>
+    </div>
+    <table style="width:100%;font-size:12px;margin-bottom:14px;border-collapse:collapse;">
+      <tr><td style="padding:2px 0;color:#4c5c56;">เลขที่บิล</td><td style="text-align:right;">${escapeHtml(shortId)}</td></tr>
+      <tr><td style="padding:2px 0;color:#4c5c56;">ทีม</td><td style="text-align:right;">${escapeHtml(teamLabel(order.team))}</td></tr>
+      <tr><td style="padding:2px 0;color:#4c5c56;">วันเวลา</td><td style="text-align:right;">${dt}</td></tr>
+      <tr><td style="padding:2px 0;color:#4c5c56;">สถานะ</td><td style="text-align:right;">${statusText}</td></tr>
+    </table>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead>
+        <tr style="border-bottom:1.5px solid #16231f;">
+          <th style="text-align:left;padding:6px 4px;">สินค้า</th>
+          <th style="text-align:right;padding:6px 4px;">จำนวน</th>
+          <th style="text-align:right;padding:6px 4px;">ราคา/หน่วย</th>
+          <th style="text-align:right;padding:6px 4px;">รวม</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map(i => `
+          <tr style="border-bottom:1px solid #dcd6c4;">
+            <td style="padding:6px 4px;">${escapeHtml(i.product_name)}${i.from_central_qty ? ` <span style="color:#c8792b;font-size:10px;">(เบิกกลาง ${i.from_central_qty})</span>` : ""}</td>
+            <td style="text-align:right;padding:6px 4px;">${i.qty}</td>
+            <td style="text-align:right;padding:6px 4px;">${money(i.unit_price || 0)}</td>
+            <td style="text-align:right;padding:6px 4px;">${money(i.qty * (i.unit_price || 0))}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+    <div style="text-align:right;margin-top:12px;font-size:14px;font-weight:700;">
+      รวมทั้งหมด: ${money(total)} บาท
+    </div>
+    <div style="margin-top:24px;font-size:10px;color:#4c5c56;text-align:center;">
+      ออกโดยระบบคลังสินค้ากลาง · พิมพ์เมื่อ ${new Date().toLocaleString("th-TH")}
+    </div>
+  `;
+  document.body.appendChild(wrapper);
+
+  try {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    await doc.html(wrapper, {
+      x: 20, y: 20, width: 555, windowWidth: 560,
+      callback: (doc) => {
+        doc.save(`ใบเสร็จ_${teamLabel(order.team)}_${shortId}.pdf`);
+        wrapper.remove();
+      },
+    });
+  } catch (e) {
+    wrapper.remove();
+    toast("สร้าง PDF ไม่สำเร็จ: " + (e.message || e), true);
+  }
+}
 // (see supabase/schema.sql) into friendly Thai messages.
 function friendlyError(err) {
   const msg = (err && err.message) || String(err);
