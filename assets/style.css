@@ -408,6 +408,19 @@ th{
   padding:8px 10px;
   border-bottom:2px solid var(--line);
 }
+th.sortable{
+  cursor:pointer;
+  user-select:none;
+  white-space:nowrap;
+}
+th.sortable:hover{color:var(--pine);}
+th.sortable .arrow{
+  display:inline-block;
+  margin-left:3px;
+  font-size:.7em;
+  opacity:.35;
+}
+th.sortable.sorted .arrow{opacity:1;color:var(--pine);}
 td{
   padding:9px 10px;
   border-bottom:1px solid var(--line);
