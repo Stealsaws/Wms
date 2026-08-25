@@ -99,13 +99,42 @@ function renderTopbar(active) {
     <div class="page" style="padding-bottom:0;">
       <div class="nav-tabs">
         ${tabs.map(([href, label, id]) =>
-          `<a href="${href}" class="${id === active ? "active" : ""}">${label}</a>`
+          `<a href="${href}" class="${id === active ? "active" : ""}">${label}${id === "admin" ? ` <span id="central-draw-badge" class="central-draw-badge" style="display:none;"></span>` : ""}</a>`
         ).join("")}
       </div>
     </div>
   `;
   const btn = document.getElementById("logout-btn");
   if (btn) btn.onclick = () => { clearSession(); location.href = "index.html"; };
+
+  if (s && s.team === "ADMIN") {
+    checkCentralDrawPending(false);
+    setInterval(() => checkCentralDrawPending(true), 25000);
+  }
+}
+
+// ---------- แจ้งเตือน "รอยืนยันการเบิกจากคลังกลาง" สำหรับ Admin ----------
+let _centralDrawKnownCount = null;
+
+async function checkCentralDrawPending(notifyOnIncrease) {
+  try {
+    const { count, error } = await sb()
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("central_confirmed", false)
+      .neq("status", "cancelled");
+    if (error) return;
+    const n = count || 0;
+    const badge = document.getElementById("central-draw-badge");
+    if (badge) {
+      if (n > 0) { badge.textContent = n; badge.style.display = "inline-flex"; }
+      else { badge.style.display = "none"; }
+    }
+    if (notifyOnIncrease && _centralDrawKnownCount !== null && n > _centralDrawKnownCount) {
+      toast(`⚡ มีรายการเบิกจากคลังกลางใหม่ ${n - _centralDrawKnownCount} รายการ รอยืนยัน`);
+    }
+    _centralDrawKnownCount = n;
+  } catch (e) { /* เงียบไว้ ไม่รบกวนผู้ใช้ */ }
 }
 
 // Renders an order as a Thai-friendly PDF receipt and triggers a download.
@@ -179,6 +208,88 @@ async function downloadReceiptPdf(order) {
     wrapper.remove();
   }
 }
+
+// ---------- บาร์โค้ดสแกนเนอร์ (กล้อง) สำหรับช่องค้นหา ----------
+let _html5Qrcode = null;
+
+function ensureScannerModal() {
+  if (document.getElementById("scanner-modal")) return;
+  const div = document.createElement("div");
+  div.id = "scanner-modal";
+  div.className = "modal-backdrop";
+  div.style.display = "none";
+  div.innerHTML = `
+    <div class="modal" style="max-width:420px;">
+      <h2>สแกนบาร์โค้ด</h2>
+      <div id="scanner-viewport" style="width:100%;border-radius:10px;overflow:hidden;background:#000;min-height:220px;"></div>
+      <p class="muted" style="margin-top:10px;">เล็งกล้องไปที่บาร์โค้ดสินค้า</p>
+      <div id="scanner-msg"></div>
+      <button class="btn btn-ghost btn-block" id="scanner-close-btn" style="margin-top:12px;">ปิด</button>
+    </div>
+  `;
+  document.body.appendChild(div);
+  document.getElementById("scanner-close-btn").onclick = closeScanner;
+}
+
+async function closeScanner() {
+  const modal = document.getElementById("scanner-modal");
+  if (modal) modal.style.display = "none";
+  if (_html5Qrcode) {
+    try { await _html5Qrcode.stop(); } catch (e) { /* ignore */ }
+    try { await _html5Qrcode.clear(); } catch (e) { /* ignore */ }
+    _html5Qrcode = null;
+  }
+}
+
+async function openBarcodeScanner(onResult) {
+  if (typeof Html5Qrcode === "undefined") {
+    toast("ไม่พบไลบรารีสแกนบาร์โค้ด กรุณารีเฟรชหน้าเว็บแล้วลองใหม่", true);
+    return;
+  }
+  ensureScannerModal();
+  document.getElementById("scanner-msg").innerHTML = "";
+  document.getElementById("scanner-modal").style.display = "flex";
+  const viewport = document.getElementById("scanner-viewport");
+  viewport.innerHTML = `<div id="scanner-el" style="width:100%;"></div>`;
+
+  _html5Qrcode = new Html5Qrcode("scanner-el", {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.QR_CODE,
+    ],
+    verbose: false,
+  });
+  try {
+    await _html5Qrcode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 260, height: 140 } },
+      (decodedText) => {
+        onResult(decodedText);
+        closeScanner();
+      },
+      () => { /* เฟรมที่สแกนไม่เจอ ไม่ต้องแจ้งเตือนทุกเฟรม */ }
+    );
+  } catch (e) {
+    document.getElementById("scanner-msg").innerHTML =
+      `<div class="error-msg">เปิดกล้องไม่สำเร็จ: ${escapeHtml(e.message || String(e))} (ต้องอนุญาตให้เว็บใช้กล้องก่อน)</div>`;
+  }
+}
+
+// Wires a 📷 button to open the scanner and write the result into the given search input.
+function wireScanButton(buttonId, inputId) {
+  const btn = document.getElementById(buttonId);
+  const input = document.getElementById(inputId);
+  if (!btn || !input) return;
+  btn.onclick = () => {
+    openBarcodeScanner((text) => {
+      input.value = text;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      toast("สแกนสำเร็จ: " + text);
+    });
+  };
+}
+
 // (see supabase/schema.sql) into friendly Thai messages.
 function friendlyError(err) {
   const msg = (err && err.message) || String(err);
@@ -201,6 +312,7 @@ function friendlyError(err) {
     const left = parts[2] ?? "0";
     return `${name} มีในสต็อกตัวอย่างไม่พอ (มีอยู่ ${left} ชิ้น)`;
   }
+  if (msg.includes("ALREADY_CONFIRMED")) return "รายการนี้ถูกยืนยันไปแล้ว";
   if (msg.startsWith("PRODUCT_NOT_FOUND")) return "ไม่พบสินค้านี้ในระบบ";
   if (msg.includes("EMPTY_CART")) return "ยังไม่ได้เลือกสินค้าในตะกร้า";
   if (msg.includes("INVALID_TEAM")) return "ทีมไม่ถูกต้อง";
