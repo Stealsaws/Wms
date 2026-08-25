@@ -121,6 +121,20 @@ a{color:inherit;}
   color:#fff;
   border-color:var(--pine);
 }
+.central-draw-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:18px;
+  height:18px;
+  padding:0 5px;
+  border-radius:999px;
+  background:var(--rust);
+  color:#fff;
+  font-size:.68rem;
+  font-weight:700;
+  margin-left:5px;
+}
 
 /* ---------- Cards / panels ---------- */
 .card{
