@@ -103,7 +103,14 @@
 
       <label>เพิ่มสินค้าเข้าบิล</label>
       <div class="field-row">
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="bo-product-search" placeholder="พิมพ์ค้นหา หรือสแกนบาร์โค้ด...">
+          <button class="btn btn-ghost btn-sm" id="bo-scan-btn" type="button" style="white-space:nowrap;">📷 สแกน</button>
+        </div>
         <select id="bo-product-select"><option value="">— เลือกสินค้า —</option></select>
+      </div>
+      <div class="field-row" style="margin-top:8px;">
+        <div></div>
         <div style="display:flex;gap:8px;">
           <input type="number" id="bo-qty" min="1" value="1" style="max-width:100px;">
           <button class="btn btn-ghost" id="bo-add-item-btn" style="white-space:nowrap;">+ เพิ่มลงบิล</button>
@@ -689,9 +696,13 @@
     function populateBoProductSelect() {
       const sel = document.getElementById("bo-product-select");
       const current = sel.value;
+      const term = (document.getElementById("bo-product-search")?.value || "").trim().toLowerCase();
+      const filtered = term
+        ? products.filter(p => p.name.toLowerCase().includes(term) || p.code.includes(term))
+        : products;
       sel.innerHTML = `<option value="">— เลือกสินค้า —</option>` +
-        products.map(p => `<option value="${p.code}">${escapeHtml(p.name)} (คลังกลาง ${p.stock_remaining})</option>`).join("");
-      sel.value = current;
+        filtered.map(p => `<option value="${p.code}">${escapeHtml(p.name)} (คลังกลาง ${p.stock_remaining})</option>`).join("");
+      if (filtered.some(p => p.code === current)) sel.value = current;
     }
 
     function setBoDefaultDate() {
@@ -723,6 +734,23 @@
       });
     }
 
+    document.getElementById("bo-product-search").addEventListener("input", populateBoProductSelect);
+
+    document.getElementById("bo-scan-btn").onclick = () => {
+      openBarcodeScanner((text) => {
+        const match = products.find(p => p.code === text);
+        document.getElementById("bo-product-search").value = text;
+        populateBoProductSelect();
+        if (match) {
+          document.getElementById("bo-product-select").value = match.code;
+          toast(`เจอสินค้า: ${match.name}`);
+          document.getElementById("bo-qty").focus();
+        } else {
+          toast("ไม่พบสินค้าที่มีรหัสนี้ในระบบ กรุณาเพิ่มสินค้าใหม่ก่อน", true);
+        }
+      });
+    };
+
     document.getElementById("bo-add-item-btn").onclick = () => {
       const code = document.getElementById("bo-product-select").value;
       const qty = parseInt(document.getElementById("bo-qty").value || "0", 10);
@@ -731,6 +759,8 @@
       boCart[code] = (boCart[code] || 0) + qty;
       renderBoCart();
       document.getElementById("bo-qty").value = "1";
+      document.getElementById("bo-product-search").value = "";
+      populateBoProductSelect();
     };
 
     document.getElementById("bo-submit-btn").onclick = async () => {
