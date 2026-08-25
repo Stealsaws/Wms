@@ -15,6 +15,19 @@
       <p>คลังกลาง → เบิกเข้าทีม A/B/C ปรับสต็อก และดูสถานะคำสั่งซื้อของทุกทีม</p>
     </div>
 
+    <div id="central-pending-section" style="display:none;">
+      <div class="section-title" style="margin-top:0;">⚡ รอยืนยันการเบิกจากคลังกลาง</div>
+      <p class="muted" style="margin-top:-8px;">รายการที่ทีมซื้อเกินสต็อกตัวเองแล้วระบบเบิกจากคลังกลางให้อัตโนมัติ — ตรวจแล้วเลือกได้ว่าจะเติมสต็อกทีมคืนให้หรือแค่รับทราบ</p>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>วันเวลา</th><th>ทีม</th><th>เบิกจากคลังกลาง</th><th></th></tr></thead>
+            <tbody id="central-pending-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div class="section-title">เพิ่มสินค้าใหม่ (เข้าคลังกลาง)</div>
     <div class="card card-pad">
       <div class="field-row">
@@ -45,6 +58,7 @@
     <p class="muted" style="margin-top:-8px;">กด "จัดการสต็อก" เพื่อเบิกจากคลังกลางเข้าทีม หรือคืนจากทีมกลับเข้าคลังกลาง</p>
     <div class="toolbar">
       <input type="text" id="search" placeholder="ค้นหาชื่อหรือรหัสสินค้า...">
+      <button class="btn btn-ghost btn-sm" id="scan-btn" type="button">📷 สแกน</button>
       <button class="filter-chip active" data-f="all">ทั้งหมด</button>
       <button class="filter-chip" data-f="available">คลังกลางมีของ</button>
       <button class="filter-chip" data-f="out">คลังกลางหมด</button>
@@ -230,6 +244,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="assets/config.js"></script>
   <script src="assets/app.js"></script>
   <script>
@@ -600,6 +615,8 @@
           toast("ยกเลิกออเดอร์และคืนสต็อกแล้ว");
           loadOrders();
           loadProducts();
+          loadCentralPending();
+          checkCentralDrawPending(false);
         };
       });
     }
@@ -754,11 +771,61 @@
     };
     renderBoCart();
 
+    async function loadCentralPending() {
+      const { data, error } = await sb()
+        .from("orders")
+        .select("id, team, created_at, order_items(product_name, qty, from_central_qty)")
+        .eq("central_confirmed", false)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false });
+      const section = document.getElementById("central-pending-section");
+      const tbody = document.getElementById("central-pending-body");
+      if (error || !data || data.length === 0) {
+        section.style.display = "none";
+        return;
+      }
+      section.style.display = "block";
+      tbody.innerHTML = data.map(o => {
+        const centralItems = (o.order_items || []).filter(i => (i.from_central_qty || 0) > 0);
+        const summary = centralItems.map(i => `${escapeHtml(i.product_name)} ×${i.from_central_qty}`).join(", ");
+        const dt = new Date(o.created_at).toLocaleString("th-TH");
+        return `<tr>
+          <td>${dt}</td>
+          <td>${teamLabel(o.team)}</td>
+          <td>${summary}</td>
+          <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" data-confirm="${o.id}" data-replenish="true">ยืนยัน + เติมสต็อกทีมคืน</button>
+              <button class="btn btn-ghost btn-sm" data-confirm="${o.id}" data-replenish="false">รับทราบเฉยๆ</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join("");
+
+      tbody.querySelectorAll("[data-confirm]").forEach(btn => {
+        btn.onclick = async () => {
+          const { error } = await sb().rpc("admin_confirm_central_draw", {
+            p_password: session.password,
+            p_order_id: btn.dataset.confirm,
+            p_replenish: btn.dataset.replenish === "true",
+          });
+          if (error) { toast(friendlyError(error), true); return; }
+          toast(btn.dataset.replenish === "true" ? "ยืนยันและเติมสต็อกทีมคืนแล้ว" : "รับทราบแล้ว");
+          loadCentralPending();
+          loadProducts();
+          loadLog();
+          checkCentralDrawPending(false);
+        };
+      });
+    }
+
     loadProducts();
     loadOrders();
     loadLog();
+    loadCentralPending();
     wireSortableHeaders("product-body", productSort, renderTable);
     wireSortableHeaders("orders-body", orderSort, loadOrders);
+    wireScanButton("scan-btn", "search");
   </script>
 </body>
 </html>
