@@ -313,6 +313,7 @@ function friendlyError(err) {
     return `${name} มีในสต็อกตัวอย่างไม่พอ (มีอยู่ ${left} ชิ้น)`;
   }
   if (msg.includes("ALREADY_CONFIRMED")) return "รายการนี้ถูกยืนยันไปแล้ว";
+  if (msg.includes("SAME_TEAM")) return "เลือกทีมต้นทางกับปลายทางเป็นทีมเดียวกันไม่ได้";
   if (msg.startsWith("PRODUCT_NOT_FOUND")) return "ไม่พบสินค้านี้ในระบบ";
   if (msg.includes("EMPTY_CART")) return "ยังไม่ได้เลือกสินค้าในตะกร้า";
   if (msg.includes("INVALID_TEAM")) return "ทีมไม่ถูกต้อง";
