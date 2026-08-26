@@ -461,12 +461,12 @@
           </div>
           <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;">
             <input type="number" min="1" value="1" id="sm-qty-${t}" style="max-width:90px;">
-            <button class="btn btn-primary btn-sm" data-alloc="${t}">เบิกเข้าทีม</button>
-            <button class="btn btn-ghost btn-sm" data-return="${t}">คืนเข้าคลังกลาง</button>
+            <button class="btn btn-primary btn-sm" data-alloc="${t}">เบิกเข้าทีม (จากคลังกลาง)</button>
           </div>
           <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
-            <span class="muted" style="font-size:.8rem;">โอนตรงไปทีมอื่น →</span>
-            <select id="sm-target-${t}" style="max-width:130px;">
+            <span class="muted" style="font-size:.8rem;">โอนออกไปที่ →</span>
+            <select id="sm-target-${t}" style="max-width:150px;">
+              <option value="CENTRAL">คลังกลาง</option>
               ${otherTeams.map(x => `<option value="${x}">${teamLabel(x)}</option>`).join("")}
             </select>
             <button class="btn btn-amber btn-sm" data-transfer="${t}">โอน</button>
@@ -489,31 +489,26 @@
           renderStockModal();
         };
       });
-      document.getElementById("sm-team-rows").querySelectorAll("[data-return]").forEach(b => {
-        b.onclick = async () => {
-          const t = b.dataset.return;
-          const qty = parseInt(document.getElementById(`sm-qty-${t}`).value || "0", 10);
-          if (!qty || qty <= 0) { toast("กรุณาระบุจำนวนให้ถูกต้อง", true); return; }
-          const { error } = await sb().rpc("admin_return_to_central", {
-            p_password: session.password, p_code: smCode, p_team: t, p_qty: qty,
-          });
-          if (error) { document.getElementById("sm-msg").innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
-          document.getElementById("sm-msg").innerHTML = `<div class="ok-msg">คืน ${qty} ชิ้น จากทีม ${t} เข้าคลังกลางเรียบร้อย</div>`;
-          await loadProducts();
-          renderStockModal();
-        };
-      });
       document.getElementById("sm-team-rows").querySelectorAll("[data-transfer]").forEach(b => {
         b.onclick = async () => {
           const t = b.dataset.transfer;
           const target = document.getElementById(`sm-target-${t}`).value;
           const qty = parseInt(document.getElementById(`sm-qty-${t}`).value || "0", 10);
           if (!qty || qty <= 0) { toast("กรุณาระบุจำนวนให้ถูกต้อง", true); return; }
-          const { error } = await sb().rpc("admin_transfer_between_teams", {
-            p_password: session.password, p_code: smCode, p_from_team: t, p_to_team: target, p_qty: qty,
-          });
+
+          let error;
+          if (target === "CENTRAL") {
+            ({ error } = await sb().rpc("admin_return_to_central", {
+              p_password: session.password, p_code: smCode, p_team: t, p_qty: qty,
+            }));
+          } else {
+            ({ error } = await sb().rpc("admin_transfer_between_teams", {
+              p_password: session.password, p_code: smCode, p_from_team: t, p_to_team: target, p_qty: qty,
+            }));
+          }
           if (error) { document.getElementById("sm-msg").innerHTML = `<div class="error-msg">${escapeHtml(friendlyError(error))}</div>`; return; }
-          document.getElementById("sm-msg").innerHTML = `<div class="ok-msg">โอน ${qty} ชิ้น จากทีม ${t} ไปทีม ${target} เรียบร้อย</div>`;
+          const destLabel = target === "CENTRAL" ? "คลังกลาง" : teamLabel(target);
+          document.getElementById("sm-msg").innerHTML = `<div class="ok-msg">โอน ${qty} ชิ้น จากทีม ${t} ไป${destLabel}เรียบร้อย</div>`;
           await loadProducts();
           renderStockModal();
         };
